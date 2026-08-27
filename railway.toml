@@ -1,14 +1,16 @@
+```toml
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "/start.sh"
+startCommand = "/bin/sh /start.sh"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 
 [variables]
-PORT = "8080"
 UVICORN_HOST = "0.0.0.0"
 UVICORN_PORT = "8080"
+REBECCA_GATEWAY_ADDR = "0.0.0.0:8080"
 SQLALCHEMY_DATABASE_URL = "sqlite:////var/lib/rebecca/rebecca.db"
+```
