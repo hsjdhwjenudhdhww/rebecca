@@ -10,7 +10,7 @@ echo "======================================"
 PORT="${PORT:-8080}"
 
 export UVICORN_HOST="0.0.0.0"
-export UVICORN_PORT="$PORT"
+export UVICORN_PORT="8080"
 
 export SQLALCHEMY_DATABASE_URL="${SQLALCHEMY_DATABASE_URL:-sqlite:////var/lib/rebecca/rebecca.db}"
 
