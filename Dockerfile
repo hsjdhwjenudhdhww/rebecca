@@ -19,7 +19,6 @@ RUN git clone --depth 1 https://github.com/rebeccapanel/Rebecca.git .
 WORKDIR /build/dashboard
 
 RUN npm ci
-
 RUN npm run build
 
 # ==============================
@@ -31,7 +30,6 @@ WORKDIR /build
 RUN go version
 
 RUN bash scripts/build_binary.sh
-
 
 # ==============================
 # Runtime
