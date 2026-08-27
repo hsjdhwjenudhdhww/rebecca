@@ -35,29 +35,33 @@ echo "[INFO] Starting Rebecca..."
 SERVER_PID=$!
 
 # ======================================
-# Wait for Rebecca
+# Wait for migration + HTTP server
 # ======================================
 
-echo "[INFO] Waiting for Rebecca..."
+echo "[INFO] Waiting for Rebecca startup..."
 
-i=0
+READY=0
 
-while ! curl -fsS "http://127.0.0.1:${PORT}/" >/dev/null 2>&1; do
-    i=$((i + 1))
+for i in $(seq 1 180); do
 
     if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-        echo "[ERROR] Rebecca stopped during startup."
+        echo "[ERROR] Rebecca server stopped."
         wait "$SERVER_PID" || true
         exit 1
     fi
 
-    if [ "$i" -ge 120 ]; then
-        echo "[ERROR] Rebecca did not become ready."
-        exit 1
+    if curl -fsS "http://127.0.0.1:${PORT}/" >/dev/null 2>&1; then
+        READY=1
+        break
     fi
 
     sleep 1
 done
+
+if [ "$READY" -ne 1 ]; then
+    echo "[ERROR] Rebecca did not become ready."
+    exit 1
+fi
 
 echo "[INFO] Rebecca is ready."
 
@@ -66,6 +70,7 @@ echo "[INFO] Rebecca is ready."
 # ======================================
 
 if [ -f "$DB_PATH" ]; then
+
     echo "[INFO] Configuring SQLite..."
 
     sqlite3 "$DB_PATH" <<'SQL'
@@ -76,10 +81,12 @@ PRAGMA wal_autocheckpoint=1000;
 SQL
 
     echo "[INFO] SQLite configured."
+
 fi
 
 # ======================================
 # Create admin
+#
 # Username: admin
 # Password: admin1
 # Telegram ID: empty
@@ -88,15 +95,32 @@ fi
 
 echo "[INFO] Creating admin account..."
 
-if "$CLI" admin create \
-    --username admin \
-    --password admin1 \
-    --role full_access
-then
-    echo "[INFO] Admin account created successfully."
+if command -v script >/dev/null 2>&1; then
+
+    (
+        sleep 1
+        printf '\n'
+    ) | script -qec \
+        "$CLI admin create --username admin --password admin1 --role full_access" \
+        /dev/null
+
 else
-    echo "[INFO] Admin already exists or creation was rejected."
+
+    echo "[INFO] script command unavailable."
+    echo "[INFO] Running CLI directly..."
+
+    "$CLI" admin create \
+        --username admin \
+        --password admin1 \
+        --role full_access
+
 fi
+
+echo "[INFO] Admin setup finished."
+
+# ======================================
+# Keep server alive
+# ======================================
 
 echo "[INFO] Rebecca is running."
 
