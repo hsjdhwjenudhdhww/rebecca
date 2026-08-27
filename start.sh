@@ -1,63 +1,125 @@
 #!/bin/bash
-set -e
+
+set -u
 
 echo "======================================"
 echo "        Rebecca Panel v0.1.4"
 echo "             Railway"
 echo "======================================"
 
-export HOST="${HOST:-0.0.0.0}"
-export PORT="${PORT:-8080}"
-export DATABASE="${DATABASE:-sqlite:////var/lib/rebecca/rebecca.db}"
-export SQLALCHEMY_DATABASE_URL="${SQLALCHEMY_DATABASE_URL:-$DATABASE}"
-export XRAY_LOCATION_ASSET="${XRAY_LOCATION_ASSET:-/usr/local/share/xray}"
+HOST="${HOST:-0.0.0.0}"
+PORT="${PORT:-1234}"
+
+export UVICORN_HOST="$HOST"
+export UVICORN_PORT="$PORT"
+
+export SQLALCHEMY_DATABASE_URL="${SQLALCHEMY_DATABASE_URL:-sqlite:////var/lib/rebecca/rebecca.db}"
 
 mkdir -p /var/lib/rebecca
+mkdir -p /opt/rebecca
 
 echo "[INFO] HOST=$HOST"
 echo "[INFO] PORT=$PORT"
-echo "[INFO] DATABASE=$DATABASE"
-echo "[INFO] SQLALCHEMY_DATABASE_URL=$SQLALCHEMY_DATABASE_URL"
+echo "[INFO] DATABASE=$SQLALCHEMY_DATABASE_URL"
 
-if [ -x /usr/local/bin/xray ]; then
+# ---------------------------------------------------------
+# Check Xray
+# ---------------------------------------------------------
+
+if command -v xray >/dev/null 2>&1; then
     echo "[INFO] Xray Core found"
-    /usr/local/bin/xray version
+    xray version || true
 else
     echo "[ERROR] Xray Core not found"
     exit 1
 fi
 
-if [ ! -x /opt/rebecca/rebecca-cli ]; then
+# ---------------------------------------------------------
+# Check Rebecca
+# ---------------------------------------------------------
+
+if [ -x /opt/rebecca/rebecca-cli ]; then
+    echo "[INFO] rebecca-cli found"
+else
     echo "[ERROR] rebecca-cli not found"
     exit 1
 fi
 
-if [ ! -x /opt/rebecca/rebecca-server ]; then
+if [ -x /opt/rebecca/rebecca-server ]; then
+    echo "[INFO] rebecca-server found"
+else
     echo "[ERROR] rebecca-server not found"
     exit 1
 fi
 
-echo "[INFO] rebecca-cli found"
-echo "[INFO] rebecca-server found"
+# ---------------------------------------------------------
+# Database migration
+# ---------------------------------------------------------
+
+echo "[INFO] Running database migrations..."
+
+if /opt/rebecca/rebecca-cli migrate up; then
+    echo "[INFO] Database migration completed"
+else
+    echo "[ERROR] Database migration failed"
+    exit 1
+fi
+
+# ---------------------------------------------------------
+# Admin
+# ---------------------------------------------------------
+
+ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
 
 echo "[INFO] Checking admin account..."
 
-if /opt/rebecca/rebecca-cli admin show admin >/dev/null 2>&1; then
-    echo "[INFO] Admin 'admin' already exists."
+# IMPORTANT:
+# Do NOT call interactive:
+# rebecca-cli admin create
+#
+# Railway has no interactive stdin.
+# The command above causes:
+#
+# Username: Aborted.
+#
+# Therefore only create the admin when credentials
+# are explicitly supplied and use non-interactive
+# arguments supported by the installed CLI.
+
+if [ -n "$ADMIN_PASSWORD" ]; then
+
+    echo "[INFO] Admin credentials supplied"
+    echo "[INFO] Admin username: $ADMIN_USERNAME"
+
+    # Try the CLI's non-interactive form.
+    # If this version does not support these options,
+    # don't crash the whole server.
+    if /opt/rebecca/rebecca-cli admin create \
+        --username "$ADMIN_USERNAME" \
+        --password "$ADMIN_PASSWORD" \
+        --role full_access; then
+
+        echo "[INFO] Admin created successfully"
+
+    else
+        echo "[WARN] Admin creation command was not accepted."
+        echo "[WARN] The database/server will still be started."
+        echo "[WARN] Run 'rebecca-cli admin --help' to inspect this version."
+    fi
+
 else
-    echo "[INFO] Creating default admin..."
-
-    printf 'admin\nadmin\nadmin\n' | \
-        /opt/rebecca/rebecca-cli admin create
-
-    echo "[INFO] Default admin created."
+    echo "[WARN] ADMIN_PASSWORD is not set."
+    echo "[WARN] Skipping automatic admin creation."
 fi
 
-echo "======================================"
-echo "        Starting Rebecca"
-echo "======================================"
+# ---------------------------------------------------------
+# Start Rebecca
+# ---------------------------------------------------------
 
+echo "======================================"
+echo "[INFO] Starting Rebecca server"
 echo "[INFO] Listening on $HOST:$PORT"
-echo "[INFO] Railway PORT=$PORT"
+echo "======================================"
 
 exec /opt/rebecca/rebecca-server
