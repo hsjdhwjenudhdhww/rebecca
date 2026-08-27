@@ -12,24 +12,16 @@ WORKDIR /build
 
 RUN git clone --depth 1 https://github.com/rebeccapanel/Rebecca.git .
 
-# ==============================
-# Build Dashboard
-# ==============================
-
 WORKDIR /build/dashboard
 
 RUN npm ci
 RUN npm run build
 
-# ==============================
-# Build Backend
-# ==============================
-
 WORKDIR /build
 
 RUN go version
-
 RUN bash scripts/build_binary.sh
+
 
 # ==============================
 # Runtime
@@ -41,6 +33,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
     sqlite3 \
+    util-linux \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/rebecca
@@ -51,7 +44,6 @@ COPY --from=builder /build/dashboard/build ./dashboard/build
 RUN mkdir -p /var/lib/rebecca
 
 COPY start.sh /start.sh
-
 RUN chmod +x /start.sh
 
 ENV PORT=8080
