@@ -1,80 +1,131 @@
-FROM debian:trixie-slim
+# syntax=docker/dockerfile:1
+
+FROM golang:1.26-bookworm AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV CGO_ENABLED=1
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    curl \
+    git \
+    nodejs \
+    npm \
+    bash \
+    unzip \
+    sqlite3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Clone Rebecca source
+RUN git clone --depth 1 https://github.com/rebeccapanel/Rebecca.git .
+
+# ------------------------------------------------------------
+# Build dashboard
+# ------------------------------------------------------------
+
+WORKDIR /build/dashboard
+
+RUN npm ci
+
+RUN VITE_BASE_API=/api/ \
+    npm run build -- \
+    --outDir=build \
+    --assetsDir=statics
+
+RUN cp ./build/index.html ./build/404.html
+
+# ------------------------------------------------------------
+# Build Rebecca Go binaries
+# ------------------------------------------------------------
+
+WORKDIR /build
+
+RUN chmod +x scripts/build_binary.sh
+
+RUN bash scripts/build_binary.sh
+
+# Verify binaries really exist
+RUN test -x /build/dist/rebecca-cli
+RUN test -x /build/dist/rebecca-server
+
+# Verify CLI is the Go CLI and contains migration command
+RUN /build/dist/rebecca-cli --help
+
+# ------------------------------------------------------------
+# Download Xray
+# ------------------------------------------------------------
+
+ARG XRAY_VERSION=26.3.27
+
+RUN mkdir -p /build/xray \
+    && curl -fL --retry 5 --retry-all-errors \
+    "https://github.com/XTLS/Xray-core/releases/download/v${XRAY_VERSION}/Xray-linux-64.zip" \
+    -o /build/xray/xray.zip \
+    && unzip -q /build/xray/xray.zip -d /build/xray \
+    && test -f /build/xray/xray \
+    && test -f /build/xray/geoip.dat \
+    && test -f /build/xray/geosite.dat
+
+# ------------------------------------------------------------
+# Runtime
+# ------------------------------------------------------------
+
+FROM debian:bookworm-slim AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
-    unzip \
     sqlite3 \
     bash \
     procps \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
-# --------------------------------------------------
 # Directories
-# --------------------------------------------------
-
 RUN mkdir -p \
     /opt/rebecca \
     /var/lib/rebecca \
     /usr/local/bin \
     /usr/local/share/xray
 
-# --------------------------------------------------
-# Install Xray
-# --------------------------------------------------
+# Rebecca binaries
+COPY --from=builder /build/dist/rebecca-cli /opt/rebecca/rebecca-cli
+COPY --from=builder /build/dist/rebecca-server /opt/rebecca/rebecca-server
 
-RUN set -eux; \
-    mkdir -p /tmp/xray; \
-    curl -fL --retry 5 --retry-all-errors \
-    https://github.com/XTLS/Xray-install/releases/latest/download/Xray-linux-64.zip \
-    -o /tmp/xray/xray.zip; \
-    unzip -o /tmp/xray/xray.zip -d /tmp/xray; \
-    test -f /tmp/xray/xray; \
-    install -m 0755 /tmp/xray/xray /usr/local/bin/xray; \
-    if [ -f /tmp/xray/geoip.dat ]; then \
-        install -m 0644 /tmp/xray/geoip.dat /usr/local/share/xray/geoip.dat; \
-    fi; \
-    if [ -f /tmp/xray/geosite.dat ]; then \
-        install -m 0644 /tmp/xray/geosite.dat /usr/local/share/xray/geosite.dat; \
-    fi; \
-    /usr/local/bin/xray version; \
-    rm -rf /tmp/xray
+# Xray
+COPY --from=builder /build/xray/xray /usr/local/bin/xray
+COPY --from=builder /build/xray/geoip.dat /usr/local/share/xray/geoip.dat
+COPY --from=builder /build/xray/geosite.dat /usr/local/share/xray/geosite.dat
 
-# --------------------------------------------------
-# Install Rebecca
-# --------------------------------------------------
+RUN chmod +x \
+    /opt/rebecca/rebecca-cli \
+    /opt/rebecca/rebecca-server \
+    /usr/local/bin/xray
 
-RUN set -eux; \
-    mkdir -p /tmp/rebecca; \
-    curl -fL --retry 5 --retry-all-errors \
-    "https://github.com/rebeccapanel/Rebecca/releases/latest/download/rebecca-linux-amd64.tar.gz" \
-    -o /tmp/rebecca/rebecca.tar.gz; \
-    tar -xzf /tmp/rebecca/rebecca.tar.gz -C /tmp/rebecca; \
-    echo "=== Rebecca release files ==="; \
-    find /tmp/rebecca -maxdepth 4 -type f -print; \
-    CLI="$(find /tmp/rebecca -type f -name 'rebecca-cli' -print -quit)"; \
-    SERVER="$(find /tmp/rebecca -type f -name 'rebecca-server' -print -quit)"; \
-    test -n "$CLI"; \
-    test -n "$SERVER"; \
-    install -m 0755 "$CLI" /opt/rebecca/rebecca-cli; \
-    install -m 0755 "$SERVER" /opt/rebecca/rebecca-server; \
-    ln -sf /opt/rebecca/rebecca-cli /usr/local/bin/rebecca-cli; \
-    ln -sf /opt/rebecca/rebecca-server /usr/local/bin/rebecca-server; \
-    /opt/rebecca/rebecca-cli --help; \
-    rm -rf /tmp/rebecca
+# Stable PATH
+ENV PATH="/opt/rebecca:/usr/local/bin:${PATH}"
 
-# --------------------------------------------------
-# Start script
-# --------------------------------------------------
+# Rebecca configuration
+ENV UVICORN_HOST=0.0.0.0
+ENV UVICORN_PORT=1234
 
+ENV SQLALCHEMY_DATABASE_URL=sqlite:////var/lib/rebecca/rebecca.db
+
+ENV XRAY_EXECUTABLE_PATH=/usr/local/bin/xray
+ENV XRAY_ASSETS_PATH=/usr/local/share/xray
+
+# Railway uses this
+ENV PORT=1234
+
+WORKDIR /opt/rebecca
+
+# Copy startup script
 COPY start.sh /start.sh
 
 RUN chmod +x /start.sh
-
-WORKDIR /opt/rebecca
 
 EXPOSE 1234
 
