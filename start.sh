@@ -6,23 +6,19 @@ echo "        Rebecca Panel v0.1.4"
 echo "             Railway"
 echo "======================================"
 
-HOST="${HOST:-0.0.0.0}"
-PORT="${PORT:-8080}"
-GATEWAY="${GATEWAY:-${HOST}:${PORT}}"
-
-DATA_DIR="${DATA_DIR:-/var/lib/rebecca}"
-DATABASE="${DATABASE:-sqlite:///${DATA_DIR}/rebecca.db}"
+HOST="0.0.0.0"
+PORT="8080"
+DATA_DIR="/var/lib/rebecca"
+DATABASE="sqlite:////var/lib/rebecca/rebecca.db"
 
 export HOST
 export PORT
-export GATEWAY
 export DATABASE
 
 mkdir -p "$DATA_DIR"
 
-echo "[INFO] PORT=$PORT"
 echo "[INFO] HOST=$HOST"
-echo "[INFO] GATEWAY=$GATEWAY"
+echo "[INFO] PORT=$PORT"
 echo "[INFO] DATABASE=$DATABASE"
 
 cd /opt/rebecca
@@ -40,55 +36,46 @@ fi
 echo "[INFO] rebecca-cli found"
 echo "[INFO] rebecca-server found"
 
-# --------------------------------------
+# ==============================
 # Database migration
-# --------------------------------------
+# ==============================
 
-echo "[INFO] Running Rebecca database migrations..."
+echo "[INFO] Running database migrations..."
 
 /opt/rebecca/rebecca-cli migrate
 
 echo "[INFO] Database migration completed."
 
-# --------------------------------------
-# Admin creation
-# --------------------------------------
+# ==============================
+# Create default admin
+# ==============================
 
-ADMIN_USERNAME="${ADMIN_USERNAME:-}"
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
-ADMIN_ROLE="${ADMIN_ROLE:-full_access}"
+echo "[INFO] Checking admin account..."
 
-if [ -n "$ADMIN_USERNAME" ] && [ -n "$ADMIN_PASSWORD" ]; then
+if /opt/rebecca/rebecca-cli admin show admin >/dev/null 2>&1; then
 
-    echo "[INFO] Checking admin account..."
-
-    if /opt/rebecca/rebecca-cli admin show "$ADMIN_USERNAME" >/dev/null 2>&1; then
-        echo "[INFO] Admin '$ADMIN_USERNAME' already exists."
-    else
-        echo "[INFO] Creating admin '$ADMIN_USERNAME'..."
-
-        /opt/rebecca/rebecca-cli admin create \
-            "$ADMIN_USERNAME" \
-            --password "$ADMIN_PASSWORD" \
-            --role "$ADMIN_ROLE"
-
-        echo "[INFO] Admin '$ADMIN_USERNAME' created."
-    fi
+    echo "[INFO] Admin 'admin' already exists."
 
 else
-    echo "[INFO] No admin environment variables supplied."
-    echo "[INFO] Skipping automatic admin creation."
+
+    echo "[INFO] Creating default admin..."
+
+    /opt/rebecca/rebecca-cli admin create admin \
+        --password admin \
+        --role full_access
+
+    echo "[INFO] Default admin created."
+
 fi
 
-# --------------------------------------
-# Start Rebecca
-# --------------------------------------
+# ==============================
+# Start server
+# ==============================
 
 echo "======================================"
 echo "        Starting Rebecca"
 echo "======================================"
 
-echo "[INFO] Listening on ${HOST}:${PORT}"
-echo "[INFO] Railway PORT=${PORT}"
+echo "[INFO] Listening on 0.0.0.0:8080"
 
 exec /opt/rebecca/rebecca-server
