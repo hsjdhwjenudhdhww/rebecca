@@ -1,174 +1,87 @@
 FROM debian:trixie-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV HOST=0.0.0.0
-ENV PORT=8080
-ENV DATABASE=sqlite:////var/lib/rebecca/rebecca.db
-ENV SQLALCHEMY_DATABASE_URL=sqlite:////var/lib/rebecca/rebecca.db
-ENV XRAY_LOCATION_ASSET=/usr/local/share/xray
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /opt/rebecca
 
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
-    wget \
     unzip \
-    tar \
-    gzip \
     sqlite3 \
     bash \
     procps \
     git \
-    jq \
     && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p \
-    /opt/rebecca \
-    /var/lib/rebecca \
-    /usr/local/share/xray
-
-WORKDIR /opt/rebecca
-
-# ============================================================
-# Xray Core 26.3.27
-# ============================================================
+# =========================================================
+# Xray Core
+# =========================================================
 
 RUN set -eux; \
-    mkdir -p /tmp/xray; \
+    mkdir -p /tmp/xray /usr/local/share/xray; \
     curl -fL --retry 5 --retry-all-errors \
-    "https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-64.zip" \
+    https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip \
     -o /tmp/xray/xray.zip; \
-    unzip -q /tmp/xray/xray.zip -d /tmp/xray; \
-    test -f /tmp/xray/xray; \
-    install -m 0755 \
-    /tmp/xray/xray \
-    /usr/local/bin/xray; \
+    unzip -o /tmp/xray/xray.zip -d /tmp/xray; \
+    install -m 0755 /tmp/xray/xray /usr/local/bin/xray; \
     if [ -f /tmp/xray/geoip.dat ]; then \
-        install -m 0644 \
-        /tmp/xray/geoip.dat \
-        /usr/local/share/xray/geoip.dat; \
+        install -m 0644 /tmp/xray/geoip.dat /usr/local/share/xray/geoip.dat; \
     fi; \
     if [ -f /tmp/xray/geosite.dat ]; then \
-        install -m 0644 \
-        /tmp/xray/geosite.dat \
-        /usr/local/share/xray/geosite.dat; \
+        install -m 0644 /tmp/xray/geosite.dat /usr/local/share/xray/geosite.dat; \
     fi; \
     /usr/local/bin/xray version; \
     rm -rf /tmp/xray
 
-# ============================================================
-# Rebecca Release
-# ============================================================
+# =========================================================
+# Rebecca
+# =========================================================
 
 RUN set -eux; \
-    mkdir -p /tmp/rebecca; \
+    mkdir -p /opt/rebecca /var/lib/rebecca /tmp/rebecca; \
     curl -fL --retry 5 --retry-all-errors \
     "https://github.com/rebeccapanel/Rebecca/releases/latest/download/rebecca-linux-amd64.tar.gz" \
     -o /tmp/rebecca/rebecca.tar.gz; \
-    tar -xzf /tmp/rebecca/rebecca.tar.gz \
-    -C /tmp/rebecca; \
-    echo "=== Rebecca files ==="; \
-    find /tmp/rebecca -maxdepth 5 -type f -print; \
+    tar -xzf /tmp/rebecca/rebecca.tar.gz -C /tmp/rebecca; \
+    echo "=== Rebecca release files ==="; \
+    find /tmp/rebecca -maxdepth 4 -type f -print; \
     CLI="$(find /tmp/rebecca -type f -name 'rebecca-cli' -print -quit)"; \
     SERVER="$(find /tmp/rebecca -type f -name 'rebecca-server' -print -quit)"; \
-    echo "CLI=$CLI"; \
-    echo "SERVER=$SERVER"; \
     test -n "$CLI"; \
     test -n "$SERVER"; \
     install -m 0755 "$CLI" /opt/rebecca/rebecca-cli; \
     install -m 0755 "$SERVER" /opt/rebecca/rebecca-server; \
+    ln -sf /opt/rebecca/rebecca-cli /usr/local/bin/rebecca-cli; \
+    ln -sf /opt/rebecca/rebecca-server /usr/local/bin/rebecca-server; \
+    /opt/rebecca/rebecca-cli --help; \
     rm -rf /tmp/rebecca
 
-RUN /opt/rebecca/rebecca-cli --help
+# =========================================================
+# Environment
+# =========================================================
 
-# ============================================================
-# Start
-# ============================================================
+ENV UVICORN_HOST=0.0.0.0
+ENV PORT=1234
+ENV UVICORN_PORT=1234
+ENV SQLALCHEMY_DATABASE_URL=sqlite:////var/lib/rebecca/rebecca.db
 
-RUN cat > /start.sh <<'EOF'
-#!/bin/bash
-set -e
+# Admin credentials
+# Railway Variables can override these.
+ENV ADMIN_USERNAME=admin
 
-echo "======================================"
-echo "        Rebecca Panel v0.1.4"
-echo "             Railway"
-echo "======================================"
+RUN chmod 755 /opt/rebecca/rebecca-cli \
+    /opt/rebecca/rebecca-server
 
-export HOST="${HOST:-0.0.0.0}"
-export PORT="${PORT:-8080}"
-export DATABASE="${DATABASE:-sqlite:////var/lib/rebecca/rebecca.db}"
-export SQLALCHEMY_DATABASE_URL="${SQLALCHEMY_DATABASE_URL:-$DATABASE}"
-export XRAY_LOCATION_ASSET="${XRAY_LOCATION_ASSET:-/usr/local/share/xray}"
+# =========================================================
+# Startup
+# =========================================================
 
-mkdir -p /var/lib/rebecca
+COPY start.sh /opt/rebecca/start.sh
 
-echo "[INFO] HOST=$HOST"
-echo "[INFO] PORT=$PORT"
-echo "[INFO] DATABASE=$DATABASE"
-echo "[INFO] SQLALCHEMY_DATABASE_URL=$SQLALCHEMY_DATABASE_URL"
+RUN chmod +x /opt/rebecca/start.sh
 
-# ============================================================
-# Xray
-# ============================================================
+EXPOSE 1234
 
-if [ -x /usr/local/bin/xray ]; then
-    echo "[INFO] Xray Core found"
-    /usr/local/bin/xray version
-else
-    echo "[ERROR] Xray Core not found"
-    exit 1
-fi
-
-# ============================================================
-# Rebecca
-# ============================================================
-
-if [ ! -x /opt/rebecca/rebecca-cli ]; then
-    echo "[ERROR] rebecca-cli not found"
-    exit 1
-fi
-
-if [ ! -x /opt/rebecca/rebecca-server ]; then
-    echo "[ERROR] rebecca-server not found"
-    exit 1
-fi
-
-echo "[INFO] rebecca-cli found"
-echo "[INFO] rebecca-server found"
-
-# ============================================================
-# Admin
-# ============================================================
-
-echo "[INFO] Checking admin account..."
-
-if /opt/rebecca/rebecca-cli admin show admin >/dev/null 2>&1; then
-    echo "[INFO] Admin 'admin' already exists."
-else
-    echo "[INFO] Creating default admin..."
-
-    /opt/rebecca/rebecca-cli admin create admin \
-        --password admin \
-        --role full_access
-
-    echo "[INFO] Admin 'admin' created successfully."
-fi
-
-# ============================================================
-# Start Rebecca
-# ============================================================
-
-echo "======================================"
-echo "        Starting Rebecca"
-echo "======================================"
-
-echo "[INFO] Listening on $HOST:$PORT"
-echo "[INFO] Railway PORT=$PORT"
-
-exec /opt/rebecca/rebecca-server
-EOF
-
-RUN chmod +x /start.sh
-
-EXPOSE 8080
-
-ENTRYPOINT ["/start.sh"]
+ENTRYPOINT ["/opt/rebecca/start.sh"]
