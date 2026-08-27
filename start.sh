@@ -10,7 +10,7 @@ echo "======================================"
 PORT="${PORT:-8080}"
 
 export UVICORN_HOST="0.0.0.0"
-export UVICORN_PORT="$PORT"
+export UVICORN_PORT="8080"
 export SQLALCHEMY_DATABASE_URL="${SQLALCHEMY_DATABASE_URL:-sqlite:////var/lib/rebecca/rebecca.db}"
 
 mkdir -p /var/lib/rebecca
@@ -50,7 +50,7 @@ for i in $(seq 1 180); do
         exit 1
     fi
 
-    if curl -fsS "http://127.0.0.1:${PORT}/" >/dev/null 2>&1; then
+    if curl -fsS "http://0.0.0.0:${PORT}/" >/dev/null 2>&1; then
         READY=1
         break
     fi
