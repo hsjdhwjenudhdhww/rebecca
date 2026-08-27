@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 RUN apt-get update && apt-get install -y \
     ca-certificates \
@@ -11,20 +11,17 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /opt/rebecca
 
 # ======================================
-# Download Rebecca v0.1.4
+# Rebecca v0.1.4
 # ======================================
 
 RUN curl -fL \
     "https://github.com/rebeccapanel/Rebecca/releases/download/v0.1.4/rebecca-linux-amd64.tar.gz" \
     -o /tmp/rebecca.tar.gz \
     && tar -xzf /tmp/rebecca.tar.gz -C /opt/rebecca \
-    && rm /tmp/rebecca.tar.gz
+    && rm -f /tmp/rebecca.tar.gz
 
-# ======================================
-# Find binaries
-# ======================================
-
-RUN find /opt/rebecca -maxdepth 3 -type f -print
+RUN chmod +x /opt/rebecca/rebecca-cli \
+    /opt/rebecca/rebecca-server
 
 RUN mkdir -p /var/lib/rebecca
 
