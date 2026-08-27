@@ -1,4 +1,4 @@
-FROM golang:1.24-bookworm AS builder
+FROM golang:1.25-bookworm AS builder
 
 RUN apt-get update && apt-get install -y \
     git \
@@ -12,15 +12,30 @@ WORKDIR /build
 
 RUN git clone --depth 1 https://github.com/rebeccapanel/Rebecca.git .
 
+# ==============================
+# Build Dashboard
+# ==============================
+
 WORKDIR /build/dashboard
 
 RUN npm ci
+
 RUN npm run build
+
+# ==============================
+# Build Backend
+# ==============================
 
 WORKDIR /build
 
+RUN go version
+
 RUN bash scripts/build_binary.sh
 
+
+# ==============================
+# Runtime
+# ==============================
 
 FROM debian:bookworm-slim
 
@@ -38,6 +53,7 @@ COPY --from=builder /build/dashboard/build ./dashboard/build
 RUN mkdir -p /var/lib/rebecca
 
 COPY start.sh /start.sh
+
 RUN chmod +x /start.sh
 
 ENV PORT=8080
