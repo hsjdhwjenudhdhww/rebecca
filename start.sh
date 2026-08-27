@@ -10,9 +10,8 @@ echo "======================================"
 PORT="${PORT:-8080}"
 
 export UVICORN_HOST="0.0.0.0"
-export UVICORN_PORT="${PORT}"
+export UVICORN_PORT="$PORT"
 export REBECCA_GATEWAY_ADDR="0.0.0.0:${PORT}"
-
 export SQLALCHEMY_DATABASE_URL="${SQLALCHEMY_DATABASE_URL:-sqlite:////var/lib/rebecca/rebecca.db}"
 
 mkdir -p /var/lib/rebecca
@@ -33,29 +32,29 @@ echo "[INFO] DATABASE=${SQLALCHEMY_DATABASE_URL}"
 # Start Rebecca
 # ======================================
 
-echo "[INFO] Starting Rebecca..."
-
 "$SERVER" &
 SERVER_PID=$!
 
 # ======================================
-# Wait for server
+# Wait for HTTP server
 # ======================================
 
 echo "[INFO] Waiting for Rebecca..."
 
 READY=0
 
-for i in $(seq 1 180); do
+for i in $(seq 1 300); do
 
     if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-        echo "[ERROR] Rebecca process stopped."
+        echo "[ERROR] Rebecca stopped during startup."
         wait "$SERVER_PID" || true
         exit 1
     fi
 
     if curl -fsS \
-        "http://127.0.0.1:${PORT}/" \
+        --connect-timeout 2 \
+        --max-time 3 \
+        "http://0.0.0.0:${PORT}/" \
         >/dev/null 2>&1
     then
         READY=1
@@ -66,17 +65,18 @@ for i in $(seq 1 180); do
 done
 
 if [ "$READY" -ne 1 ]; then
-    echo "[ERROR] Rebecca did not become ready."
+    echo "[ERROR] Rebecca did not become ready after 300 seconds."
     exit 1
 fi
 
-echo "[INFO] Rebecca is listening on 0.0.0.0:${PORT}"
+echo "[INFO] Rebecca is ready."
 
 # ======================================
 # SQLite
 # ======================================
 
 if [ -f "$DB_PATH" ]; then
+
     echo "[INFO] Configuring SQLite..."
 
     sqlite3 "$DB_PATH" <<'SQL'
@@ -87,10 +87,15 @@ PRAGMA wal_autocheckpoint=1000;
 SQL
 
     echo "[INFO] SQLite configured."
+
 fi
 
 # ======================================
-# Create Admin
+# Create admin
+# Username: admin
+# Password: admin1
+# Telegram ID: empty
+# Role: full_access
 # ======================================
 
 echo "[INFO] Creating admin account..."
