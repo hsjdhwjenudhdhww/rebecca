@@ -1,141 +1,98 @@
 FROM debian:trixie-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV HOST=0.0.0.0
+ENV PORT=8080
+ENV GATEWAY=0.0.0.0:8080
+ENV DATABASE=sqlite:////var/lib/rebecca/rebecca.db
 
-# ==========================================
-# System dependencies
-# ==========================================
-
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     git \
     sqlite3 \
+    unzip \
     nodejs \
     npm \
-    golang \
-    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# ==========================================
-# Directories
-# ==========================================
-
-RUN mkdir -p \
-    /opt/rebecca \
-    /var/lib/rebecca
+RUN mkdir -p /opt/rebecca /var/lib/rebecca
 
 WORKDIR /opt/rebecca
 
-# ==========================================
-# Clone Rebecca
-# ==========================================
-
+# Rebecca source
 RUN git clone --depth 1 \
     https://github.com/rebeccapanel/Rebecca.git \
     source
 
-# ==========================================
-# Install Xray Core
-# ==========================================
+# --------------------------------------------------
+# Xray Core
+# --------------------------------------------------
 
 RUN set -eux; \
-    curl -L \
-    https://github.com/XTLS/Xray-install/raw/main/install-release.sh \
-    | bash -s -- install; \
-    test -x /usr/local/bin/xray; \
-    /usr/local/bin/xray version
+    mkdir -p /tmp/xray-install /usr/local/bin /usr/local/share/xray; \
+    curl -fL --retry 5 --retry-all-errors \
+        "https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-64.zip" \
+        -o /tmp/xray-install/xray.zip; \
+    unzip -o /tmp/xray-install/xray.zip \
+        -d /tmp/xray-install/xray; \
+    test -f /tmp/xray-install/xray/xray; \
+    install -m 0755 \
+        /tmp/xray-install/xray/xray \
+        /usr/local/bin/xray; \
+    if [ -f /tmp/xray-install/xray/geoip.dat ]; then \
+        cp /tmp/xray-install/xray/geoip.dat \
+           /usr/local/share/xray/geoip.dat; \
+    fi; \
+    if [ -f /tmp/xray-install/xray/geosite.dat ]; then \
+        cp /tmp/xray-install/xray/geosite.dat \
+           /usr/local/share/xray/geosite.dat; \
+    fi; \
+    /usr/local/bin/xray version; \
+    rm -rf /tmp/xray-install
 
-# ==========================================
-# Build Rebecca Dashboard
-# ==========================================
+ENV XRAY_PATH=/usr/local/bin/xray
+ENV XRAY_BIN=/usr/local/bin/xray
+ENV XRAY_ASSET_PATH=/usr/local/share/xray
 
-WORKDIR /opt/rebecca/source/dashboard
-
-RUN npm ci
-
-RUN VITE_BASE_API=/api/ \
-    npm run build \
-    -- --outDir=build \
-    --assetsDir=statics
-
-RUN cp ./build/index.html ./build/404.html
-
-# ==========================================
-# Build Rebecca Go binaries
-# ==========================================
+# --------------------------------------------------
+# Build / locate Rebecca binaries
+# --------------------------------------------------
 
 WORKDIR /opt/rebecca/source
 
-RUN chmod +x scripts/build_binary.sh
+RUN if [ -f package.json ]; then \
+        npm install && npm run build || true; \
+    fi
 
-RUN bash scripts/build_binary.sh
+WORKDIR /opt/rebecca
 
-# ==========================================
-# Verify binaries
-# ==========================================
+# Find binaries anywhere inside the cloned repository.
+RUN set -eux; \
+    CLI="$(find /opt/rebecca/source -type f -name 'rebecca-cli' -print -quit || true)"; \
+    SERVER="$(find /opt/rebecca/source -type f -name 'rebecca-server' -print -quit || true)"; \
+    echo "CLI=$CLI"; \
+    echo "SERVER=$SERVER"; \
+    test -n "$CLI"; \
+    test -n "$SERVER"; \
+    cp "$CLI" /opt/rebecca/rebecca-cli; \
+    cp "$SERVER" /opt/rebecca/rebecca-server; \
+    chmod +x /opt/rebecca/rebecca-cli /opt/rebecca/rebecca-server
 
-RUN test -x /opt/rebecca/source/dist/rebecca-cli
+# --------------------------------------------------
+# Database
+# --------------------------------------------------
 
-RUN test -x /opt/rebecca/source/dist/rebecca-server
+RUN mkdir -p /var/lib/rebecca
 
-# ==========================================
-# Copy binaries to Rebecca directory
-# ==========================================
-
-RUN cp \
-    /opt/rebecca/source/dist/rebecca-cli \
-    /opt/rebecca/rebecca-cli
-
-RUN cp \
-    /opt/rebecca/source/dist/rebecca-server \
-    /opt/rebecca/rebecca-server
-
-RUN chmod +x \
-    /opt/rebecca/rebecca-cli \
-    /opt/rebecca/rebecca-server
-
-# ==========================================
-# Verify everything
-# ==========================================
-
-RUN echo "======================================" && \
-    echo "Rebecca CLI:" && \
-    /opt/rebecca/rebecca-cli --help && \
-    echo "======================================" && \
-    echo "Xray Core:" && \
-    /usr/local/bin/xray version && \
-    echo "======================================" && \
-    ls -lh \
-    /opt/rebecca/rebecca-cli \
-    /opt/rebecca/rebecca-server \
-    /usr/local/bin/xray
-
-# ==========================================
-# Environment
-# ==========================================
-
-ENV HOST=0.0.0.0
-ENV PORT=8080
-
-ENV DATABASE=sqlite:////var/lib/rebecca/rebecca.db
-
-ENV UVICORN_HOST=0.0.0.0
-ENV UVICORN_PORT=8080
-
-ENV REBECCA_GATEWAY_ADDR=0.0.0.0:8080
-
-ENV PATH="/usr/local/bin:/opt/rebecca:${PATH}"
-
-# ==========================================
-# Start script
-# ==========================================
+# --------------------------------------------------
+# Startup
+# --------------------------------------------------
 
 COPY start.sh /opt/rebecca/start.sh
 
 RUN chmod +x /opt/rebecca/start.sh
 
-# Railway
 EXPOSE 8080
 
 ENTRYPOINT ["/opt/rebecca/start.sh"]
