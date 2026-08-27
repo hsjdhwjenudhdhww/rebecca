@@ -1,96 +1,101 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+APP_DIR="/opt/rebecca"
+DATA_DIR="/var/lib/rebecca"
+DB_FILE="${DATA_DIR}/rebecca.db"
+
+CLI="${APP_DIR}/rebecca-cli"
+SERVER="${APP_DIR}/rebecca-server"
+XRAY="/usr/local/bin/xray"
+
+HOST="${UVICORN_HOST:-0.0.0.0}"
+PORT="${PORT:-${UVICORN_PORT:-1234}}"
+
+export UVICORN_HOST="$HOST"
+export UVICORN_PORT="$PORT"
+
+export SQLALCHEMY_DATABASE_URL="${SQLALCHEMY_DATABASE_URL:-sqlite:////var/lib/rebecca/rebecca.db}"
+
+export XRAY_EXECUTABLE_PATH="${XRAY_EXECUTABLE_PATH:-/usr/local/bin/xray}"
+export XRAY_ASSETS_PATH="${XRAY_ASSETS_PATH:-/usr/local/share/xray}"
+
+mkdir -p "$DATA_DIR"
 
 echo "======================================"
-echo "        Rebecca Panel v0.1.4"
+echo "        Rebecca Panel"
 echo "             Railway"
 echo "======================================"
 
-HOST="${HOST:-0.0.0.0}"
-PORT="${PORT:-1234}"
-
-export HOST
-export PORT
-
-export DATABASE="${DATABASE:-sqlite:////var/lib/rebecca/rebecca.db}"
-export SQLALCHEMY_DATABASE_URL="${SQLALCHEMY_DATABASE_URL:-sqlite:////var/lib/rebecca/rebecca.db}"
-
-mkdir -p /var/lib/rebecca
-mkdir -p /opt/rebecca
-
-echo "[INFO] HOST=$HOST"
-echo "[INFO] PORT=$PORT"
-echo "[INFO] DATABASE=$DATABASE"
+echo "[INFO] HOST=$UVICORN_HOST"
+echo "[INFO] PORT=$UVICORN_PORT"
+echo "[INFO] DATABASE=$DB_FILE"
 echo "[INFO] SQLALCHEMY_DATABASE_URL=$SQLALCHEMY_DATABASE_URL"
 
-# --------------------------------------------------
-# Xray
-# --------------------------------------------------
+# ------------------------------------------------------------
+# Verify binaries
+# ------------------------------------------------------------
 
-if command -v xray >/dev/null 2>&1; then
-    echo "[INFO] Xray Core found"
-    xray version || true
-else
-    echo "[ERROR] Xray Core not found"
+if [ ! -x "$CLI" ]; then
+    echo "[ERROR] rebecca-cli not found: $CLI"
     exit 1
 fi
 
-# --------------------------------------------------
-# Rebecca binaries
-# --------------------------------------------------
+echo "[INFO] rebecca-cli found"
 
-if [ -x /opt/rebecca/rebecca-cli ]; then
-    echo "[INFO] rebecca-cli found"
-else
-    echo "[ERROR] rebecca-cli not found"
+if [ ! -x "$SERVER" ]; then
+    echo "[ERROR] rebecca-server not found: $SERVER"
     exit 1
 fi
 
-if [ -x /opt/rebecca/rebecca-server ]; then
-    echo "[INFO] rebecca-server found"
-else
-    echo "[ERROR] rebecca-server not found"
+echo "[INFO] rebecca-server found"
+
+if [ ! -x "$XRAY" ]; then
+    echo "[ERROR] Xray not found: $XRAY"
     exit 1
 fi
 
-export PATH="/opt/rebecca:$PATH"
+echo "[INFO] Xray Core found"
 
-# --------------------------------------------------
+"$XRAY" version || true
+
+# ------------------------------------------------------------
 # Database migration
-# --------------------------------------------------
+# ------------------------------------------------------------
 
 echo "[INFO] Checking database..."
 
-if /opt/rebecca/rebecca-cli migrate up; then
-    echo "[INFO] Database migration completed"
+if [ ! -f "$DB_FILE" ]; then
+    echo "[INFO] Database does not exist yet."
 else
+    echo "[INFO] Existing database found."
+fi
+
+echo "[INFO] Running database migrations..."
+
+if ! "$CLI" migrate up; then
     echo "[ERROR] Database migration failed"
     exit 1
 fi
 
-# --------------------------------------------------
+echo "[INFO] Database migration completed successfully."
+
+# ------------------------------------------------------------
 # Admin
-# --------------------------------------------------
-
-echo "[INFO] Checking admin account..."
-
-if [ -n "${ADMIN_USERNAME:-}" ] && [ -n "${ADMIN_PASSWORD:-}" ]; then
-
-    echo "[INFO] Admin credentials supplied by environment"
-
-    # فقط اطلاع‌رسانی؛ CLI فعلی interactive است
-    # و نباید در Railway بدون stdin اجرا شود.
-    echo "[INFO] ADMIN_USERNAME=$ADMIN_USERNAME"
-
-else
-    echo "[INFO] ADMIN_USERNAME / ADMIN_PASSWORD not configured"
-    echo "[INFO] Skipping automatic interactive admin creation"
-fi
-
-# --------------------------------------------------
-# Start Rebecca
-# --------------------------------------------------
+#
+# IMPORTANT:
+# Rebecca's CLI admin creation is interactive.
+# Railway has no interactive TTY, therefore DO NOT run:
+#
+# rebecca-cli admin create ...
+#
+# here.
+#
+# The server must be allowed to start normally.
+# ------------------------------------------------------------
 
 echo "[INFO] Starting Rebecca server..."
+echo "[INFO] Listening on ${UVICORN_HOST}:${UVICORN_PORT}"
 
-exec /opt/rebecca/rebecca-server
+exec "$SERVER"
