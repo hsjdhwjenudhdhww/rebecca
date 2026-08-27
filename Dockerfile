@@ -1,4 +1,3 @@
-```dockerfile
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y \
@@ -40,4 +39,3 @@ ENV SQLALCHEMY_DATABASE_URL=sqlite:////var/lib/rebecca/rebecca.db
 EXPOSE 8080
 
 CMD ["/start.sh"]
-```
