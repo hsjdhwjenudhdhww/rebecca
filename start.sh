@@ -28,7 +28,6 @@ if /opt/rebecca/dist/rebecca-cli migrate up; then
     echo "[INFO] Database migration completed."
 else
     echo "[WARN] Migration command returned an error."
-    echo "[WARN] Continuing startup..."
 fi
 
 # ======================================
@@ -40,18 +39,18 @@ echo "[INFO] Checking admin account..."
 ADMIN_USERNAME="admin"
 ADMIN_PASSWORD="admin"
 
-# Try to create the full-access admin.
-# Username/password are supplied through stdin so Railway
-# does not require interactive input.
-
-printf '%s\n%s\n' "$ADMIN_USERNAME" "$ADMIN_PASSWORD" | \
-    /opt/rebecca/dist/rebecca-cli cli admin create --role full_access \
-    || echo "[INFO] Admin may already exist or CLI rejected duplicate account."
-
-echo "[INFO] Admin setup completed."
+if printf '%s\n%s\n' \
+    "$ADMIN_USERNAME" \
+    "$ADMIN_PASSWORD" \
+    | /opt/rebecca/dist/rebecca-cli admin create --role full_access
+then
+    echo "[INFO] Admin account created successfully."
+else
+    echo "[INFO] Admin already exists or admin creation was rejected."
+fi
 
 # ======================================
-# Start Rebecca
+# Start server
 # ======================================
 
 echo "[INFO] Starting Rebecca server..."
