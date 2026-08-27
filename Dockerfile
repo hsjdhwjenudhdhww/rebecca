@@ -10,10 +10,6 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /opt/rebecca
 
-# ======================================
-# Rebecca v0.1.4
-# ======================================
-
 RUN curl -fL \
     "https://github.com/rebeccapanel/Rebecca/releases/download/v0.1.4/rebecca-linux-amd64.tar.gz" \
     -o /tmp/rebecca.tar.gz \
@@ -26,7 +22,6 @@ RUN chmod +x /opt/rebecca/rebecca-cli \
 RUN mkdir -p /var/lib/rebecca
 
 COPY start.sh /start.sh
-
 RUN chmod +x /start.sh
 
 ENV UVICORN_HOST=0.0.0.0
