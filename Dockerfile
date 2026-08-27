@@ -21,7 +21,6 @@ RUN apt-get update && apt-get install -y \
     jq \
     && rm -rf /var/lib/apt/lists/*
 
-# Directories
 RUN mkdir -p \
     /opt/rebecca \
     /var/lib/rebecca \
@@ -40,18 +39,24 @@ RUN set -eux; \
     -o /tmp/xray/xray.zip; \
     unzip -q /tmp/xray/xray.zip -d /tmp/xray; \
     test -f /tmp/xray/xray; \
-    install -m 0755 /tmp/xray/xray /usr/local/bin/xray; \
+    install -m 0755 \
+    /tmp/xray/xray \
+    /usr/local/bin/xray; \
     if [ -f /tmp/xray/geoip.dat ]; then \
-        install -m 0644 /tmp/xray/geoip.dat /usr/local/share/xray/geoip.dat; \
+        install -m 0644 \
+        /tmp/xray/geoip.dat \
+        /usr/local/share/xray/geoip.dat; \
     fi; \
     if [ -f /tmp/xray/geosite.dat ]; then \
-        install -m 0644 /tmp/xray/geosite.dat /usr/local/share/xray/geosite.dat; \
+        install -m 0644 \
+        /tmp/xray/geosite.dat \
+        /usr/local/share/xray/geosite.dat; \
     fi; \
     /usr/local/bin/xray version; \
     rm -rf /tmp/xray
 
 # ============================================================
-# Rebecca Panel
+# Rebecca Release
 # ============================================================
 
 RUN set -eux; \
@@ -59,8 +64,9 @@ RUN set -eux; \
     curl -fL --retry 5 --retry-all-errors \
     "https://github.com/rebeccapanel/Rebecca/releases/latest/download/rebecca-linux-amd64.tar.gz" \
     -o /tmp/rebecca/rebecca.tar.gz; \
-    tar -xzf /tmp/rebecca/rebecca.tar.gz -C /tmp/rebecca; \
-    echo "=== Rebecca release files ==="; \
+    tar -xzf /tmp/rebecca/rebecca.tar.gz \
+    -C /tmp/rebecca; \
+    echo "=== Rebecca files ==="; \
     find /tmp/rebecca -maxdepth 5 -type f -print; \
     CLI="$(find /tmp/rebecca -type f -name 'rebecca-cli' -print -quit)"; \
     SERVER="$(find /tmp/rebecca -type f -name 'rebecca-server' -print -quit)"; \
@@ -70,11 +76,12 @@ RUN set -eux; \
     test -n "$SERVER"; \
     install -m 0755 "$CLI" /opt/rebecca/rebecca-cli; \
     install -m 0755 "$SERVER" /opt/rebecca/rebecca-server; \
-    /opt/rebecca/rebecca-cli --help; \
     rm -rf /tmp/rebecca
 
+RUN /opt/rebecca/rebecca-cli --help
+
 # ============================================================
-# Start script
+# Start
 # ============================================================
 
 RUN cat > /start.sh <<'EOF'
@@ -99,7 +106,10 @@ echo "[INFO] PORT=$PORT"
 echo "[INFO] DATABASE=$DATABASE"
 echo "[INFO] SQLALCHEMY_DATABASE_URL=$SQLALCHEMY_DATABASE_URL"
 
-# Xray check
+# ============================================================
+# Xray
+# ============================================================
+
 if [ -x /usr/local/bin/xray ]; then
     echo "[INFO] Xray Core found"
     /usr/local/bin/xray version
@@ -108,41 +118,25 @@ else
     exit 1
 fi
 
-# Rebecca binaries
-if [ -x /opt/rebecca/rebecca-cli ]; then
-    echo "[INFO] rebecca-cli found"
-else
+# ============================================================
+# Rebecca
+# ============================================================
+
+if [ ! -x /opt/rebecca/rebecca-cli ]; then
     echo "[ERROR] rebecca-cli not found"
     exit 1
 fi
 
-if [ -x /opt/rebecca/rebecca-server ]; then
-    echo "[INFO] rebecca-server found"
-else
+if [ ! -x /opt/rebecca/rebecca-server ]; then
     echo "[ERROR] rebecca-server not found"
     exit 1
 fi
 
-# ============================================================
-# Database migrations
-# ============================================================
-
-echo "[INFO] Running database migrations..."
-
-cd /opt/rebecca
-
-/opt/rebecca/rebecca-cli migrate up || {
-    echo "[ERROR] Database migration failed"
-    exit 1
-}
-
-echo "[INFO] Database migration completed."
+echo "[INFO] rebecca-cli found"
+echo "[INFO] rebecca-server found"
 
 # ============================================================
-# Default admin
-# username: admin
-# password: admin
-# role: full_access
+# Admin
 # ============================================================
 
 echo "[INFO] Checking admin account..."
@@ -175,7 +169,6 @@ EOF
 
 RUN chmod +x /start.sh
 
-# Railway
 EXPOSE 8080
 
 ENTRYPOINT ["/start.sh"]
