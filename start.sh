@@ -9,11 +9,9 @@ echo "======================================"
 
 PORT="${PORT:-8080}"
 
-export HOST="0.0.0.0"
-export PORT="$PORT"
-
 export UVICORN_HOST="0.0.0.0"
-export UVICORN_PORT="$PORT"
+export UVICORN_PORT="${PORT}"
+export REBECCA_GATEWAY_ADDR="0.0.0.0:${PORT}"
 
 export SQLALCHEMY_DATABASE_URL="${SQLALCHEMY_DATABASE_URL:-sqlite:////var/lib/rebecca/rebecca.db}"
 
@@ -28,6 +26,7 @@ ldd --version | head -n 1
 
 echo "[INFO] HOST=0.0.0.0"
 echo "[INFO] PORT=${PORT}"
+echo "[INFO] GATEWAY=0.0.0.0:${PORT}"
 echo "[INFO] DATABASE=${SQLALCHEMY_DATABASE_URL}"
 
 # ======================================
@@ -40,22 +39,25 @@ echo "[INFO] Starting Rebecca..."
 SERVER_PID=$!
 
 # ======================================
-# Wait for Rebecca
+# Wait for server
 # ======================================
 
-echo "[INFO] Waiting for Rebecca startup..."
+echo "[INFO] Waiting for Rebecca..."
 
 READY=0
 
 for i in $(seq 1 180); do
 
     if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-        echo "[ERROR] Rebecca server stopped."
+        echo "[ERROR] Rebecca process stopped."
         wait "$SERVER_PID" || true
         exit 1
     fi
 
-    if curl -fsS "http://0.0.0.0:${PORT}/" >/dev/null 2>&1; then
+    if curl -fsS \
+        "http://127.0.0.1:${PORT}/" \
+        >/dev/null 2>&1
+    then
         READY=1
         break
     fi
@@ -68,14 +70,13 @@ if [ "$READY" -ne 1 ]; then
     exit 1
 fi
 
-echo "[INFO] Rebecca is ready on 0.0.0.0:${PORT}"
+echo "[INFO] Rebecca is listening on 0.0.0.0:${PORT}"
 
 # ======================================
 # SQLite
 # ======================================
 
 if [ -f "$DB_PATH" ]; then
-
     echo "[INFO] Configuring SQLite..."
 
     sqlite3 "$DB_PATH" <<'SQL'
@@ -86,43 +87,24 @@ PRAGMA wal_autocheckpoint=1000;
 SQL
 
     echo "[INFO] SQLite configured."
-
 fi
 
 # ======================================
 # Create Admin
-# Telegram ID = empty
-# Username = admin
-# Password = admin1
 # ======================================
 
 echo "[INFO] Creating admin account..."
 
-if command -v script >/dev/null 2>&1; then
-
-    (
-        sleep 1
-        printf '\n'
-    ) | script -qec \
-        "$CLI admin create --username admin --password admin1 --role full_access" \
-        /dev/null || true
-
-else
-
-    echo "[WARN] script command not found."
-    "$CLI" admin create \
-        --username admin \
-        --password admin1 \
-        --role full_access || true
-
-fi
+"$CLI" admin create \
+    --username admin \
+    --password admin1 \
+    --role full_access \
+    || echo "[INFO] Admin already exists or creation was rejected."
 
 echo "[INFO] Admin setup finished."
 
 # ======================================
-# Keep Rebecca running
+# Keep server alive
 # ======================================
-
-echo "[INFO] Rebecca is running on 0.0.0.0:${PORT}"
 
 wait "$SERVER_PID"
