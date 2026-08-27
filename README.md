@@ -1,6 +1,9 @@
 <div dir="rtl">
+
 <h1 align="center">Rebecca Panel</h1>
+
 <h2 align="center">نصب و راه‌اندازی روی Railway</h2>
+
 <p align="center">
 راهنمای کامل Deploy کردن Rebecca Panel روی Railway
 </p>
@@ -60,22 +63,11 @@ https://your-project.up.railway.app
 
 ⸻
 
-<h2 align="center">۶. Redeploy</h2>
+<h2 align="center">۶. ورود به پنل</h2>
 
-بعد از ساخت Domain:
+پس از ساخت Domain، دامنه‌ای که Railway ساخته است را باز کنید.
 
-1. وارد بخش Deployments شوید.
-2. روی سه نقطه عمودی (⋮) مربوط به Deployment کلیک کنید.
-3. گزینه Redeploy را بزنید.
-4. منتظر بمانید تا Deployment دوباره با موفقیت انجام شود.
-
-⸻
-
-<h2 align="center">۷. ورود به پنل</h2>
-
-پس از موفق شدن Redeploy، دامنه‌ای که Railway ساخته است را باز کنید.
-
-سپس در انتهای دامنه عبارت زیر را اضافه کنید:
+برای ورود مستقیم به داشبورد، عبارت زیر را در انتهای دامنه اضافه کنید:
 
 /dashboard
 
@@ -85,7 +77,17 @@ https://your-project.up.railway.app/dashboard
 
 با باز کردن این آدرس وارد Rebecca Dashboard می‌شوید.
 
-رمز و یوزرنیم پیش فرض : admin , admin
+<h3 align="center">اطلاعات ورود پیش‌فرض</h3>
+
+<p align="center">
+
+<b>Username:</b> admin
+
+<br>
+
+<b>Password:</b> admin
+
+</p>
 
 ⸻
 
@@ -93,7 +95,7 @@ https://your-project.up.railway.app/dashboard
 
 این پروژه برای اجرای سرویس روی Railway از پورت زیر استفاده می‌کند:
 
-8080
+<h3 align="center">8080</h3>
 
 بنابراین هنگام ساخت Domain، سرویس را روی پورت 8080 قرار دهید.
 
@@ -104,21 +106,26 @@ https://your-project.up.railway.app/dashboard
 * ابتدا پروژه را در GitHub خودتان Fork کنید.
 * Railway را با GitHub متصل کنید.
 * صبر کنید Deployment اولیه کاملاً موفق شود.
-* بعد از آن Generate Domain را انجام دهید.
+* بعد از موفق شدن Deployment، وارد بخش Networking شوید.
+* روی Generate Domain کلیک کنید.
 * پورت Domain را روی 8080 قرار دهید.
-* در بخش Deployments از منوی سه‌نقطه، Redeploy را بزنید.
-* برای ورود به پنل، /dashboard را به انتهای دامنه اضافه کنید.
+* برای ورود به پنل، `/dashboard` را به انتهای دامنه اضافه کنید.
+* اطلاعات ورود پیش‌فرض `admin / admin` است.
 
 ⸻
 
 <h2 align="center">کانال‌های ما</h2>
+
 <h3 align="center">سازنده</h3>
+
 <p align="center">
 <a href="https://t.me/amirsp1ider">
 @amirsp1ider
 </a>
 </p>
+
 <h3 align="center">کانال اصلی</h3>
+
 <p align="center">
 <a href="https://t.me/SPiDER_VPN1">
 @SPiDER_VPN1
@@ -128,4 +135,5 @@ https://your-project.up.railway.app/dashboard
 ⸻
 
 <h2 align="center">Rebecca Panel — Railway Deployment</h2>
+
 </div>
