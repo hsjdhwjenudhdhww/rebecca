@@ -85,6 +85,8 @@ https://your-project.up.railway.app/dashboard
 
 با باز کردن این آدرس وارد Rebecca Dashboard می‌شوید.
 
+رمز و یوزرنیم پیش فرض : admin , admin
+
 ⸻
 
 <h2 align="center">پورت پروژه</h2>
