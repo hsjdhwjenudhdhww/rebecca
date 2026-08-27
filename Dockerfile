@@ -13,8 +13,8 @@ RUN apt-get update && apt-get install -y \
     sqlite3 \
     nodejs \
     npm \
-    unzip \
-    tar \
+    golang \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # ==========================================
@@ -23,8 +23,7 @@ RUN apt-get update && apt-get install -y \
 
 RUN mkdir -p \
     /opt/rebecca \
-    /var/lib/rebecca \
-    /usr/local/share/xray
+    /var/lib/rebecca
 
 WORKDIR /opt/rebecca
 
@@ -35,39 +34,6 @@ WORKDIR /opt/rebecca
 RUN git clone --depth 1 \
     https://github.com/rebeccapanel/Rebecca.git \
     source
-
-# ==========================================
-# Build frontend if package.json exists
-# ==========================================
-
-WORKDIR /opt/rebecca/source
-
-RUN if [ -f package.json ]; then \
-        npm install && npm run build || true; \
-    fi
-
-WORKDIR /opt/rebecca
-
-# ==========================================
-# Find Rebecca binaries
-# ==========================================
-
-RUN CLI="$(find /opt/rebecca/source \
-        -type f \
-        -name 'rebecca-cli' \
-        -print -quit)" && \
-    SERVER="$(find /opt/rebecca/source \
-        -type f \
-        -name 'rebecca-server' \
-        -print -quit)" && \
-    test -n "$CLI" && \
-    test -n "$SERVER" && \
-    cp "$CLI" /opt/rebecca/rebecca-cli && \
-    cp "$SERVER" /opt/rebecca/rebecca-server
-
-RUN chmod +x \
-    /opt/rebecca/rebecca-cli \
-    /opt/rebecca/rebecca-server
 
 # ==========================================
 # Install Xray Core
@@ -81,23 +47,69 @@ RUN set -eux; \
     /usr/local/bin/xray version
 
 # ==========================================
-# Make sure Xray is available in PATH
+# Build Rebecca Dashboard
 # ==========================================
 
-ENV PATH="/usr/local/bin:${PATH}"
+WORKDIR /opt/rebecca/source/dashboard
+
+RUN npm ci
+
+RUN VITE_BASE_API=/api/ \
+    npm run build \
+    -- --outDir=build \
+    --assetsDir=statics
+
+RUN cp ./build/index.html ./build/404.html
 
 # ==========================================
-# Verify Rebecca + Xray
+# Build Rebecca Go binaries
 # ==========================================
 
-RUN echo "===== Rebecca CLI =====" && \
+WORKDIR /opt/rebecca/source
+
+RUN chmod +x scripts/build_binary.sh
+
+RUN bash scripts/build_binary.sh
+
+# ==========================================
+# Verify binaries
+# ==========================================
+
+RUN test -x /opt/rebecca/source/dist/rebecca-cli
+
+RUN test -x /opt/rebecca/source/dist/rebecca-server
+
+# ==========================================
+# Copy binaries to Rebecca directory
+# ==========================================
+
+RUN cp \
+    /opt/rebecca/source/dist/rebecca-cli \
+    /opt/rebecca/rebecca-cli
+
+RUN cp \
+    /opt/rebecca/source/dist/rebecca-server \
+    /opt/rebecca/rebecca-server
+
+RUN chmod +x \
+    /opt/rebecca/rebecca-cli \
+    /opt/rebecca/rebecca-server
+
+# ==========================================
+# Verify everything
+# ==========================================
+
+RUN echo "======================================" && \
+    echo "Rebecca CLI:" && \
     /opt/rebecca/rebecca-cli --help && \
-    echo "===== Xray =====" && \
+    echo "======================================" && \
+    echo "Xray Core:" && \
     /usr/local/bin/xray version && \
-    echo "===== Files =====" && \
-    ls -lh /opt/rebecca/rebecca-cli \
-           /opt/rebecca/rebecca-server \
-           /usr/local/bin/xray
+    echo "======================================" && \
+    ls -lh \
+    /opt/rebecca/rebecca-cli \
+    /opt/rebecca/rebecca-server \
+    /usr/local/bin/xray
 
 # ==========================================
 # Environment
@@ -105,7 +117,15 @@ RUN echo "===== Rebecca CLI =====" && \
 
 ENV HOST=0.0.0.0
 ENV PORT=8080
+
 ENV DATABASE=sqlite:////var/lib/rebecca/rebecca.db
+
+ENV UVICORN_HOST=0.0.0.0
+ENV UVICORN_PORT=8080
+
+ENV REBECCA_GATEWAY_ADDR=0.0.0.0:8080
+
+ENV PATH="/usr/local/bin:/opt/rebecca:${PATH}"
 
 # ==========================================
 # Start script
@@ -115,7 +135,7 @@ COPY start.sh /opt/rebecca/start.sh
 
 RUN chmod +x /opt/rebecca/start.sh
 
-# Railway HTTP port
+# Railway
 EXPOSE 8080
 
 ENTRYPOINT ["/opt/rebecca/start.sh"]
