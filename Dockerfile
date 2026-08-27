@@ -7,7 +7,6 @@ RUN apt-get update && apt-get install -y \
     tar \
     gzip \
     util-linux \
-    dos2unix \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/rebecca
@@ -18,19 +17,20 @@ RUN curl -fL \
     && tar -xzf /tmp/rebecca.tar.gz -C /opt/rebecca \
     && rm -f /tmp/rebecca.tar.gz
 
-RUN chmod +x /opt/rebecca/rebecca-cli \
+RUN chmod +x \
+    /opt/rebecca/rebecca-cli \
     /opt/rebecca/rebecca-server
 
 RUN mkdir -p /var/lib/rebecca
 
 COPY start.sh /start.sh
 
-RUN dos2unix /start.sh \
-    && chmod +x /start.sh \
-    && head -n 1 /start.sh
+RUN sed -i 's/\r$//' /start.sh \
+    && chmod +x /start.sh
 
 ENV UVICORN_HOST=0.0.0.0
 ENV UVICORN_PORT=8080
+ENV REBECCA_GATEWAY_ADDR=0.0.0.0:8080
 ENV SQLALCHEMY_DATABASE_URL=sqlite:////var/lib/rebecca/rebecca.db
 
 EXPOSE 8080
