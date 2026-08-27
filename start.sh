@@ -2,114 +2,120 @@
 
 set -eu
 
+echo ""
 echo "======================================"
-echo "        Rebecca Panel v0.1.4          "
+echo "        Rebecca Panel                 "
 echo "             Railway                  "
 echo "======================================"
+echo ""
+
+# ============================================================
+# Railway PORT
+# ============================================================
 
 PORT="${PORT:-8080}"
 
+export PORT="$PORT"
+
+# Rebecca gateway MUST listen on all interfaces.
+export HOST="0.0.0.0"
 export UVICORN_HOST="0.0.0.0"
 export UVICORN_PORT="$PORT"
+
+# This has priority over UVICORN_HOST/UVICORN_PORT
 export REBECCA_GATEWAY_ADDR="0.0.0.0:${PORT}"
+
+# ============================================================
+# Database
+# ============================================================
+
 export SQLALCHEMY_DATABASE_URL="${SQLALCHEMY_DATABASE_URL:-sqlite:////var/lib/rebecca/rebecca.db}"
 
 mkdir -p /var/lib/rebecca
 
-CLI="/opt/rebecca/rebecca-cli"
-SERVER="/opt/rebecca/rebecca-server"
-DB_PATH="/var/lib/rebecca/rebecca.db"
-
-echo "[INFO] GLIBC:"
-ldd --version | head -n 1
-
-echo "[INFO] HOST=0.0.0.0"
 echo "[INFO] PORT=${PORT}"
-echo "[INFO] GATEWAY=0.0.0.0:${PORT}"
+echo "[INFO] HOST=0.0.0.0"
+echo "[INFO] GATEWAY=${REBECCA_GATEWAY_ADDR}"
 echo "[INFO] DATABASE=${SQLALCHEMY_DATABASE_URL}"
 
-# ======================================
-# Start Rebecca
-# ======================================
+echo ""
 
-"$SERVER" &
-SERVER_PID=$!
+# ============================================================
+# Check binaries
+# ============================================================
 
-# ======================================
-# Wait for HTTP server
-# ======================================
-
-echo "[INFO] Waiting for Rebecca..."
-
-READY=0
-
-for i in $(seq 1 300); do
-
-    if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-        echo "[ERROR] Rebecca stopped during startup."
-        wait "$SERVER_PID" || true
-        exit 1
-    fi
-
-    if curl -fsS \
-        --connect-timeout 2 \
-        --max-time 3 \
-        "http://0.0.0.0:${PORT}/" \
-        >/dev/null 2>&1
-    then
-        READY=1
-        break
-    fi
-
-    sleep 1
-done
-
-if [ "$READY" -ne 1 ]; then
-    echo "[ERROR] Rebecca did not become ready after 300 seconds."
+if [ ! -x /opt/rebecca/rebecca-cli ]; then
+    echo "[ERROR] rebecca-cli not found"
     exit 1
 fi
 
-echo "[INFO] Rebecca is ready."
+if [ ! -x /opt/rebecca/rebecca-server ]; then
+    echo "[ERROR] rebecca-server not found"
+    exit 1
+fi
 
-# ======================================
-# SQLite
-# ======================================
+echo "[INFO] rebecca-cli found"
+echo "[INFO] rebecca-server found"
 
-if [ -f "$DB_PATH" ]; then
+# ============================================================
+# Database migration
+# ============================================================
 
-    echo "[INFO] Configuring SQLite..."
+echo ""
+echo "[INFO] Running Rebecca database migrations..."
+echo ""
 
-    sqlite3 "$DB_PATH" <<'SQL'
-PRAGMA journal_mode=WAL;
-PRAGMA synchronous=NORMAL;
-PRAGMA busy_timeout=60000;
-PRAGMA wal_autocheckpoint=1000;
-SQL
+cd /opt/rebecca
 
-    echo "[INFO] SQLite configured."
+/opt/rebecca/rebecca-cli migrate up
+
+echo ""
+echo "[INFO] Database migration completed."
+
+# ============================================================
+# Create admin
+# ============================================================
+
+echo ""
+echo "[INFO] Creating admin account..."
+echo ""
+
+# IMPORTANT:
+# Rebecca's official CLI syntax supports:
+# rebecca cli admin create --role full_access
+#
+# The CLI may prompt for username/password.
+#
+# We try the non-interactive environment-supported route first.
+
+if [ -n "${REBECCA_ADMIN_USERNAME:-}" ] && [ -n "${REBECCA_ADMIN_PASSWORD:-}" ]; then
+
+    echo "[INFO] Admin credentials supplied through environment."
+
+    printf '%s\n%s\n' \
+        "$REBECCA_ADMIN_USERNAME" \
+        "$REBECCA_ADMIN_PASSWORD" \
+        | /opt/rebecca/rebecca-cli cli admin create --role full_access \
+        || echo "[WARN] Admin creation returned non-zero."
+
+else
+
+    echo "[INFO] No admin environment variables supplied."
+    echo "[INFO] Skipping automatic admin creation."
 
 fi
 
-# ======================================
-# Create admin
-# Username: admin
-# Password: admin1
-# Telegram ID: empty
-# Role: full_access
-# ======================================
+# ============================================================
+# Start Rebecca
+# ============================================================
 
-echo "[INFO] Creating admin account..."
+echo ""
+echo "======================================"
+echo "        Starting Rebecca             "
+echo "======================================"
+echo ""
+echo "[INFO] Listening on ${REBECCA_GATEWAY_ADDR}"
+echo "[INFO] Railway PORT=${PORT}"
+echo ""
 
-"$CLI" admin create \
-    --username admin \
-    --password admin1 \
-    --role full_access \
-    || echo "[INFO] Admin already exists or creation was rejected."
-
-echo "[INFO] Admin setup finished."
-
-# ======================================
-# Keep server alive
-# ======================================
-
-wait "$SERVER_PID"
+exec /opt/rebecca/rebecca-server
