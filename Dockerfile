@@ -1,9 +1,6 @@
 FROM debian:trixie-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONUNBUFFERED=1
-
-WORKDIR /opt/rebecca
 
 RUN apt-get update && apt-get install -y \
     ca-certificates \
@@ -15,39 +12,47 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# =========================
-# Xray
-# =========================
+# --------------------------------------------------
+# Directories
+# --------------------------------------------------
+
+RUN mkdir -p \
+    /opt/rebecca \
+    /var/lib/rebecca \
+    /usr/local/bin \
+    /usr/local/share/xray
+
+# --------------------------------------------------
+# Install Xray
+# --------------------------------------------------
 
 RUN set -eux; \
-    mkdir -p /tmp/xray /usr/local/share/xray; \
+    mkdir -p /tmp/xray; \
     curl -fL --retry 5 --retry-all-errors \
-    "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip" \
+    https://github.com/XTLS/Xray-install/releases/latest/download/Xray-linux-64.zip \
     -o /tmp/xray/xray.zip; \
     unzip -o /tmp/xray/xray.zip -d /tmp/xray; \
+    test -f /tmp/xray/xray; \
     install -m 0755 /tmp/xray/xray /usr/local/bin/xray; \
     if [ -f /tmp/xray/geoip.dat ]; then \
-        install -m 0644 /tmp/xray/geoip.dat \
-        /usr/local/share/xray/geoip.dat; \
+        install -m 0644 /tmp/xray/geoip.dat /usr/local/share/xray/geoip.dat; \
     fi; \
     if [ -f /tmp/xray/geosite.dat ]; then \
-        install -m 0644 /tmp/xray/geosite.dat \
-        /usr/local/share/xray/geosite.dat; \
+        install -m 0644 /tmp/xray/geosite.dat /usr/local/share/xray/geosite.dat; \
     fi; \
     /usr/local/bin/xray version; \
     rm -rf /tmp/xray
 
-# =========================
-# Rebecca
-# =========================
+# --------------------------------------------------
+# Install Rebecca
+# --------------------------------------------------
 
 RUN set -eux; \
-    mkdir -p /opt/rebecca /var/lib/rebecca /tmp/rebecca; \
+    mkdir -p /tmp/rebecca; \
     curl -fL --retry 5 --retry-all-errors \
     "https://github.com/rebeccapanel/Rebecca/releases/latest/download/rebecca-linux-amd64.tar.gz" \
     -o /tmp/rebecca/rebecca.tar.gz; \
-    tar -xzf /tmp/rebecca/rebecca.tar.gz \
-    -C /tmp/rebecca; \
+    tar -xzf /tmp/rebecca/rebecca.tar.gz -C /tmp/rebecca; \
     echo "=== Rebecca release files ==="; \
     find /tmp/rebecca -maxdepth 4 -type f -print; \
     CLI="$(find /tmp/rebecca -type f -name 'rebecca-cli' -print -quit)"; \
@@ -61,23 +66,16 @@ RUN set -eux; \
     /opt/rebecca/rebecca-cli --help; \
     rm -rf /tmp/rebecca
 
-# =========================
-# Environment
-# =========================
-
-ENV HOST=0.0.0.0
-ENV PORT=1234
-ENV SQLALCHEMY_DATABASE_URL=sqlite:////var/lib/rebecca/rebecca.db
-ENV ADMIN_USERNAME=admin
-
-# =========================
+# --------------------------------------------------
 # Start script
-# =========================
+# --------------------------------------------------
 
 COPY start.sh /start.sh
 
-RUN chmod 755 /start.sh
+RUN chmod +x /start.sh
+
+WORKDIR /opt/rebecca
 
 EXPOSE 1234
 
-ENTRYPOINT ["/start.sh"]
+ENTRYPOINT ["/bin/bash", "/start.sh"]
