@@ -9,8 +9,12 @@ echo "======================================"
 
 PORT="${PORT:-8080}"
 
+export HOST="0.0.0.0"
+export PORT="$PORT"
+
 export UVICORN_HOST="0.0.0.0"
-export UVICORN_PORT="8080"
+export UVICORN_PORT="$PORT"
+
 export SQLALCHEMY_DATABASE_URL="${SQLALCHEMY_DATABASE_URL:-sqlite:////var/lib/rebecca/rebecca.db}"
 
 mkdir -p /var/lib/rebecca
@@ -22,6 +26,7 @@ DB_PATH="/var/lib/rebecca/rebecca.db"
 echo "[INFO] GLIBC:"
 ldd --version | head -n 1
 
+echo "[INFO] HOST=0.0.0.0"
 echo "[INFO] PORT=${PORT}"
 echo "[INFO] DATABASE=${SQLALCHEMY_DATABASE_URL}"
 
@@ -35,7 +40,7 @@ echo "[INFO] Starting Rebecca..."
 SERVER_PID=$!
 
 # ======================================
-# Wait for migration + HTTP server
+# Wait for Rebecca
 # ======================================
 
 echo "[INFO] Waiting for Rebecca startup..."
@@ -63,7 +68,7 @@ if [ "$READY" -ne 1 ]; then
     exit 1
 fi
 
-echo "[INFO] Rebecca is ready."
+echo "[INFO] Rebecca is ready on 0.0.0.0:${PORT}"
 
 # ======================================
 # SQLite
@@ -85,12 +90,10 @@ SQL
 fi
 
 # ======================================
-# Create admin
-#
-# Username: admin
-# Password: admin1
-# Telegram ID: empty
-# Role: full_access
+# Create Admin
+# Telegram ID = empty
+# Username = admin
+# Password = admin1
 # ======================================
 
 echo "[INFO] Creating admin account..."
@@ -102,26 +105,24 @@ if command -v script >/dev/null 2>&1; then
         printf '\n'
     ) | script -qec \
         "$CLI admin create --username admin --password admin1 --role full_access" \
-        /dev/null
+        /dev/null || true
 
 else
 
-    echo "[INFO] script command unavailable."
-    echo "[INFO] Running CLI directly..."
-
+    echo "[WARN] script command not found."
     "$CLI" admin create \
         --username admin \
         --password admin1 \
-        --role full_access
+        --role full_access || true
 
 fi
 
 echo "[INFO] Admin setup finished."
 
 # ======================================
-# Keep server alive
+# Keep Rebecca running
 # ======================================
 
-echo "[INFO] Rebecca is running."
+echo "[INFO] Rebecca is running on 0.0.0.0:${PORT}"
 
 wait "$SERVER_PID"
