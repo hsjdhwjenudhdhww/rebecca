@@ -10,53 +10,35 @@ echo "======================================"
 PORT="${PORT:-8080}"
 
 export UVICORN_HOST="0.0.0.0"
-export UVICORN_PORT="8080"
+export UVICORN_PORT="$PORT"
 export SQLALCHEMY_DATABASE_URL="${SQLALCHEMY_DATABASE_URL:-sqlite:////var/lib/rebecca/rebecca.db}"
 
 mkdir -p /var/lib/rebecca
 
 DB_PATH="/var/lib/rebecca/rebecca.db"
 
+echo "[INFO] Checking GLIBC..."
+ldd --version | head -n 1
+
 echo "[INFO] PORT=${PORT}"
 echo "[INFO] DATABASE=${SQLALCHEMY_DATABASE_URL}"
 
 # ======================================
-# Check GLIBC
+# SQLite configuration
 # ======================================
-
-echo "[INFO] Checking GLIBC..."
-
-ldd --version | head -n 1
-
-# ======================================
-# Database migration
-# ======================================
-
-echo "[INFO] Running database migrations..."
-
-if /opt/rebecca/rebecca-cli migrate up; then
-    echo "[INFO] Database migration completed."
-else
-    echo "[ERROR] Database migration failed."
-    exit 1
-fi
-
-# ======================================
-# SQLite
-# ======================================
-
-echo "[INFO] Configuring SQLite..."
 
 if [ -f "$DB_PATH" ]; then
+    echo "[INFO] Configuring SQLite..."
+
     sqlite3 "$DB_PATH" <<'SQL'
 PRAGMA journal_mode=WAL;
 PRAGMA synchronous=NORMAL;
 PRAGMA busy_timeout=60000;
 PRAGMA wal_autocheckpoint=1000;
 SQL
-fi
 
-echo "[INFO] SQLite configured."
+    echo "[INFO] SQLite configured."
+fi
 
 # ======================================
 # Create admin
