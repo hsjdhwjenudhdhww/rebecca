@@ -1,4 +1,3 @@
-```sh
 #!/bin/sh
 
 set -eu
@@ -116,4 +115,3 @@ fi
 echo "[INFO] Starting Rebecca..."
 
 exec "$SERVER"
-```
