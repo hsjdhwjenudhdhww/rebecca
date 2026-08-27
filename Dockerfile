@@ -1,13 +1,17 @@
 FROM debian:trixie-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# Railway
 ENV HOST=0.0.0.0
 ENV PORT=8080
+
+# Rebecca
 ENV DATABASE=sqlite:////var/lib/rebecca/rebecca.db
 ENV SQLALCHEMY_DATABASE_URL=sqlite:////var/lib/rebecca/rebecca.db
 
 # =========================================================
-# System packages
+# Packages
 # =========================================================
 
 RUN apt-get update && apt-get install -y \
@@ -17,7 +21,6 @@ RUN apt-get update && apt-get install -y \
     sqlite3 \
     bash \
     procps \
-    git \
     jq \
     && rm -rf /var/lib/apt/lists/*
 
@@ -31,56 +34,59 @@ RUN mkdir -p \
     /usr/local/bin \
     /usr/local/share/xray
 
+WORKDIR /opt/rebecca
+
 # =========================================================
-# Install Rebecca using official installer
+# Xray Core 26.3.27
 # =========================================================
 
 RUN set -eux; \
-    curl -fsSL \
-    https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca-binary.sh \
-    -o /tmp/rebecca-binary.sh; \
-    chmod +x /tmp/rebecca-binary.sh; \
-    /tmp/rebecca-binary.sh install || true; \
-    rm -f /tmp/rebecca-binary.sh
-
-# =========================================================
-# Verify Rebecca binaries
-# =========================================================
-
-RUN set -eux; \
-    echo "Checking Rebecca installation..."; \
-    find /opt/rebecca -maxdepth 3 -type f -name 'rebecca-*' -print || true; \
-    find /usr/local/bin -maxdepth 1 -type f -name 'rebecca-*' -print || true
-
-# =========================================================
-# Xray Core
-# Version: 26.3.27
-# =========================================================
-
-RUN set -eux; \
-    mkdir -p /tmp/xray-install; \
+    mkdir -p /tmp/xray; \
     curl -fL --retry 5 --retry-all-errors \
     "https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-64.zip" \
-    -o /tmp/xray-install/xray.zip; \
-    unzip -o /tmp/xray-install/xray.zip \
-    -d /tmp/xray-install; \
-    test -f /tmp/xray-install/xray; \
+    -o /tmp/xray/xray.zip; \
+    unzip -o /tmp/xray/xray.zip -d /tmp/xray; \
+    test -f /tmp/xray/xray; \
     install -m 0755 \
-    /tmp/xray-install/xray \
+    /tmp/xray/xray \
     /usr/local/bin/xray; \
-    if [ -f /tmp/xray-install/geoip.dat ]; then \
+    if [ -f /tmp/xray/geoip.dat ]; then \
         install -m 0644 \
-        /tmp/xray-install/geoip.dat \
+        /tmp/xray/geoip.dat \
         /usr/local/share/xray/geoip.dat; \
     fi; \
-    if [ -f /tmp/xray-install/geosite.dat ]; then \
+    if [ -f /tmp/xray/geosite.dat ]; then \
         install -m 0644 \
-        /tmp/xray-install/geosite.dat \
+        /tmp/xray/geosite.dat \
         /usr/local/share/xray/geosite.dat; \
     fi; \
-    echo "Xray Core installed:"; \
     /usr/local/bin/xray version; \
-    rm -rf /tmp/xray-install
+    rm -rf /tmp/xray
+
+# =========================================================
+# Rebecca
+#
+# Official GitHub release
+# =========================================================
+
+RUN set -eux; \
+    mkdir -p /tmp/rebecca; \
+    curl -fL --retry 5 --retry-all-errors \
+    "https://github.com/rebeccapanel/Rebecca/releases/latest/download/rebecca-linux-amd64.tar.gz" \
+    -o /tmp/rebecca/rebecca.tar.gz; \
+    tar -xzf /tmp/rebecca/rebecca.tar.gz \
+    -C /tmp/rebecca; \
+    echo "=== Rebecca release files ==="; \
+    find /tmp/rebecca -type f -maxdepth 4 -print; \
+    CLI="$(find /tmp/rebecca -type f -name 'rebecca-cli' -print -quit)"; \
+    SERVER="$(find /tmp/rebecca -type f -name 'rebecca-server' -print -quit)"; \
+    test -n "$CLI"; \
+    test -n "$SERVER"; \
+    install -m 0755 "$CLI" /opt/rebecca/rebecca-cli; \
+    install -m 0755 "$SERVER" /opt/rebecca/rebecca-server; \
+    rm -rf /tmp/rebecca; \
+    /opt/rebecca/rebecca-cli --help; \
+    /opt/rebecca/rebecca-server --help || true
 
 # =========================================================
 # Create start.sh
@@ -100,6 +106,7 @@ export HOST="${HOST:-0.0.0.0}"
 export PORT="${PORT:-8080}"
 
 export DATABASE="${DATABASE:-sqlite:////var/lib/rebecca/rebecca.db}"
+
 export SQLALCHEMY_DATABASE_URL="${SQLALCHEMY_DATABASE_URL:-$DATABASE}"
 
 mkdir -p /var/lib/rebecca
@@ -115,63 +122,28 @@ echo "[INFO] SQLALCHEMY_DATABASE_URL=$SQLALCHEMY_DATABASE_URL"
 
 if [ -x /usr/local/bin/xray ]; then
     echo "[INFO] Xray Core found"
-    /usr/local/bin/xray version || true
+    /usr/local/bin/xray version
 else
     echo "[ERROR] Xray Core not found"
+    exit 1
 fi
 
 # =========================================================
-# Locate Rebecca binaries
+# Rebecca
 # =========================================================
 
-REBECCA_CLI=""
+REBECCA_CLI="/opt/rebecca/rebecca-cli"
+REBECCA_SERVER="/opt/rebecca/rebecca-server"
 
-if [ -x /opt/rebecca/rebecca-cli ]; then
-    REBECCA_CLI="/opt/rebecca/rebecca-cli"
-elif [ -x /usr/local/bin/rebecca-cli ]; then
-    REBECCA_CLI="/usr/local/bin/rebecca-cli"
-else
-    FOUND_CLI="$(find /opt/rebecca /usr/local/bin \
-        -type f \
-        -name 'rebecca-cli' \
-        -print -quit 2>/dev/null || true)"
-
-    if [ -n "$FOUND_CLI" ]; then
-        REBECCA_CLI="$FOUND_CLI"
-    fi
-fi
-
-REBECCA_SERVER=""
-
-if [ -x /opt/rebecca/rebecca-server ]; then
-    REBECCA_SERVER="/opt/rebecca/rebecca-server"
-elif [ -x /usr/local/bin/rebecca-server ]; then
-    REBECCA_SERVER="/usr/local/bin/rebecca-server"
-else
-    FOUND_SERVER="$(find /opt/rebecca /usr/local/bin \
-        -type f \
-        -name 'rebecca-server' \
-        -print -quit 2>/dev/null || true)"
-
-    if [ -n "$FOUND_SERVER" ]; then
-        REBECCA_SERVER="$FOUND_SERVER"
-    fi
-fi
-
-echo "[INFO] CLI=$REBECCA_CLI"
-echo "[INFO] SERVER=$REBECCA_SERVER"
-
-if [ -z "$REBECCA_CLI" ]; then
+if [ ! -x "$REBECCA_CLI" ]; then
     echo "[ERROR] rebecca-cli not found"
     exit 1
 fi
 
-if [ -z "$REBECCA_SERVER" ]; then
+if [ ! -x "$REBECCA_SERVER" ]; then
     echo "[ERROR] rebecca-server not found"
     exit 1
 fi
-
-chmod +x "$REBECCA_CLI" "$REBECCA_SERVER"
 
 echo "[INFO] rebecca-cli found"
 echo "[INFO] rebecca-server found"
@@ -182,14 +154,17 @@ echo "[INFO] rebecca-server found"
 
 echo "[INFO] Running database migrations..."
 
-"$REBECCA_CLI" migrate up || {
-    echo "[WARN] Migration command returned an error."
-}
+"$REBECCA_CLI" migrate up
+
+if [ $? -ne 0 ]; then
+    echo "[ERROR] Database migration failed"
+    exit 1
+fi
 
 echo "[INFO] Database migration completed."
 
 # =========================================================
-# Default admin
+# Admin
 #
 # Username: admin
 # Password: admin
@@ -199,7 +174,8 @@ echo "[INFO] Database migration completed."
 echo "[INFO] Checking admin account..."
 
 if "$REBECCA_CLI" admin list 2>/dev/null | \
-    grep -qE '(^|[[:space:]])admin([[:space:]]|$)'; then
+   grep -qE '(^|[[:space:]])admin([[:space:]]|$)'
+then
 
     echo "[INFO] Admin 'admin' already exists."
 
@@ -211,11 +187,12 @@ else
         --password admin \
         --role full_access
 
-    if [ $? -eq 0 ]; then
-        echo "[INFO] Admin 'admin' created successfully."
-    else
-        echo "[WARN] Failed to create default admin."
+    if [ $? -ne 0 ]; then
+        echo "[ERROR] Failed to create admin"
+        exit 1
     fi
+
+    echo "[INFO] Admin 'admin' created successfully."
 
 fi
 
@@ -238,7 +215,7 @@ EOF
 RUN chmod +x /start.sh
 
 # =========================================================
-# Railway
+# Railway port
 # =========================================================
 
 EXPOSE 8080
