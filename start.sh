@@ -11,7 +11,6 @@ PORT="${PORT:-8080}"
 
 export UVICORN_HOST="0.0.0.0"
 export UVICORN_PORT="8080"
-
 export SQLALCHEMY_DATABASE_URL="${SQLALCHEMY_DATABASE_URL:-sqlite:////var/lib/rebecca/rebecca.db}"
 
 mkdir -p /var/lib/rebecca
@@ -22,58 +21,25 @@ echo "[INFO] PORT=${PORT}"
 echo "[INFO] DATABASE=${SQLALCHEMY_DATABASE_URL}"
 
 # ======================================
-# Locate Rebecca CLI
+# Check GLIBC
 # ======================================
 
-if [ -x "/opt/rebecca/rebecca-cli" ]; then
-    CLI="/opt/rebecca/rebecca-cli"
-elif [ -x "/opt/rebecca/dist/rebecca-cli" ]; then
-    CLI="/opt/rebecca/dist/rebecca-cli"
-else
-    CLI="$(find /opt/rebecca -type f -name 'rebecca-cli' -print -quit)"
-fi
+echo "[INFO] Checking GLIBC..."
 
-if [ -z "${CLI:-}" ]; then
-    echo "[ERROR] rebecca-cli not found!"
-    find /opt/rebecca -maxdepth 3 -type f -print
-    exit 1
-fi
-
-chmod +x "$CLI"
-
-echo "[INFO] CLI: $CLI"
+ldd --version | head -n 1
 
 # ======================================
-# Locate Server
-# ======================================
-
-if [ -x "/opt/rebecca/rebecca-server" ]; then
-    SERVER="/opt/rebecca/rebecca-server"
-elif [ -x "/opt/rebecca/dist/rebecca-server" ]; then
-    SERVER="/opt/rebecca/dist/rebecca-server"
-else
-    SERVER="$(find /opt/rebecca -type f -name 'rebecca-server' -print -quit)"
-fi
-
-if [ -z "${SERVER:-}" ]; then
-    echo "[ERROR] rebecca-server not found!"
-    find /opt/rebecca -maxdepth 3 -type f -print
-    exit 1
-fi
-
-chmod +x "$SERVER"
-
-echo "[INFO] Server: $SERVER"
-
-# ======================================
-# Database Migration
+# Database migration
 # ======================================
 
 echo "[INFO] Running database migrations..."
 
-"$CLI" migrate up
-
-echo "[INFO] Database migration completed."
+if /opt/rebecca/rebecca-cli migrate up; then
+    echo "[INFO] Database migration completed."
+else
+    echo "[ERROR] Database migration failed."
+    exit 1
+fi
 
 # ======================================
 # SQLite
@@ -93,12 +59,12 @@ fi
 echo "[INFO] SQLite configured."
 
 # ======================================
-# Create Admin
+# Create admin
 # ======================================
 
 echo "[INFO] Creating admin account..."
 
-if "$CLI" admin create \
+if /opt/rebecca/rebecca-cli admin create \
     --username admin \
     --password admin \
     --role full_access
@@ -112,6 +78,6 @@ fi
 # Start Rebecca
 # ======================================
 
-echo "[INFO] Starting Rebecca..."
+echo "[INFO] Starting Rebecca server..."
 
-exec "$SERVER"
+exec /opt/rebecca/rebecca-server
