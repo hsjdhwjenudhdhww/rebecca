@@ -1,82 +1,121 @@
-FROM debian:trixie-slim AS builder
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    ca-certificates \
-    nodejs \
-    npm \
-    golang \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /build
-
-# Clone Rebecca
-RUN git clone --depth 1 https://github.com/rebeccapanel/Rebecca.git .
-
-# Build dashboard
-WORKDIR /build/dashboard
-
-RUN npm ci
-
-RUN VITE_BASE_API=/api/ \
-    npm run build -- \
-    --outDir=build \
-    --assetsDir=statics
-
-RUN cp build/index.html build/404.html
-
-# Build Go binaries
-WORKDIR /build
-
-RUN bash scripts/build_binary.sh
-
-
-# ============================================================
-# Runtime
-# ============================================================
-
 FROM debian:trixie-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# ==========================================
+# System dependencies
+# ==========================================
+
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
+    git \
     sqlite3 \
+    nodejs \
+    npm \
+    unzip \
+    tar \
     && rm -rf /var/lib/apt/lists/*
+
+# ==========================================
+# Directories
+# ==========================================
+
+RUN mkdir -p \
+    /opt/rebecca \
+    /var/lib/rebecca \
+    /usr/local/share/xray
 
 WORKDIR /opt/rebecca
 
-# Copy built Rebecca
-COPY --from=builder /build/dist/rebecca-server /opt/rebecca/rebecca-server
-COPY --from=builder /build/dist/rebecca-cli /opt/rebecca/rebecca-cli
+# ==========================================
+# Clone Rebecca
+# ==========================================
 
-# Copy migrations/config/static files that may be required
-COPY --from=builder /build /opt/rebecca/source
+RUN git clone --depth 1 \
+    https://github.com/rebeccapanel/Rebecca.git \
+    source
 
-# Create data directory
-RUN mkdir -p /var/lib/rebecca
+# ==========================================
+# Build frontend if package.json exists
+# ==========================================
+
+WORKDIR /opt/rebecca/source
+
+RUN if [ -f package.json ]; then \
+        npm install && npm run build || true; \
+    fi
+
+WORKDIR /opt/rebecca
+
+# ==========================================
+# Find Rebecca binaries
+# ==========================================
+
+RUN CLI="$(find /opt/rebecca/source \
+        -type f \
+        -name 'rebecca-cli' \
+        -print -quit)" && \
+    SERVER="$(find /opt/rebecca/source \
+        -type f \
+        -name 'rebecca-server' \
+        -print -quit)" && \
+    test -n "$CLI" && \
+    test -n "$SERVER" && \
+    cp "$CLI" /opt/rebecca/rebecca-cli && \
+    cp "$SERVER" /opt/rebecca/rebecca-server
 
 RUN chmod +x \
-    /opt/rebecca/rebecca-server \
-    /opt/rebecca/rebecca-cli
+    /opt/rebecca/rebecca-cli \
+    /opt/rebecca/rebecca-server
 
-COPY start.sh /start.sh
+# ==========================================
+# Install Xray Core
+# ==========================================
 
-RUN sed -i 's/\r$//' /start.sh \
-    && chmod +x /start.sh
+RUN set -eux; \
+    curl -L \
+    https://github.com/XTLS/Xray-install/raw/main/install-release.sh \
+    | bash -s -- install; \
+    test -x /usr/local/bin/xray; \
+    /usr/local/bin/xray version
+
+# ==========================================
+# Make sure Xray is available in PATH
+# ==========================================
+
+ENV PATH="/usr/local/bin:${PATH}"
+
+# ==========================================
+# Verify Rebecca + Xray
+# ==========================================
+
+RUN echo "===== Rebecca CLI =====" && \
+    /opt/rebecca/rebecca-cli --help && \
+    echo "===== Xray =====" && \
+    /usr/local/bin/xray version && \
+    echo "===== Files =====" && \
+    ls -lh /opt/rebecca/rebecca-cli \
+           /opt/rebecca/rebecca-server \
+           /usr/local/bin/xray
+
+# ==========================================
+# Environment
+# ==========================================
 
 ENV HOST=0.0.0.0
-ENV UVICORN_HOST=0.0.0.0
-ENV UVICORN_PORT=8080
-ENV REBECCA_GATEWAY_ADDR=0.0.0.0:8080
+ENV PORT=8080
+ENV DATABASE=sqlite:////var/lib/rebecca/rebecca.db
 
-ENV SQLALCHEMY_DATABASE_URL=sqlite:////var/lib/rebecca/rebecca.db
+# ==========================================
+# Start script
+# ==========================================
 
+COPY start.sh /opt/rebecca/start.sh
+
+RUN chmod +x /opt/rebecca/start.sh
+
+# Railway HTTP port
 EXPOSE 8080
 
-ENTRYPOINT ["/start.sh"]
+ENTRYPOINT ["/opt/rebecca/start.sh"]
