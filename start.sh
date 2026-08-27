@@ -7,84 +7,87 @@ echo "        Rebecca Panel v0.1.4"
 echo "             Railway"
 echo "======================================"
 
-# --------------------------------------------------
+# ============================================================
 # Directories
-# --------------------------------------------------
+# ============================================================
 
 mkdir -p /var/lib/rebecca
 mkdir -p /var/lib/rebecca/certs
 mkdir -p /var/lib/rebecca/config
 
-# --------------------------------------------------
-# Railway port
-# --------------------------------------------------
+# ============================================================
+# Railway
+# ============================================================
 
-PORT="${PORT:-8080}"
-
-export PORT
 export HOST="0.0.0.0"
-
-export UVICORN_HOST="0.0.0.0"
-export UVICORN_PORT="$PORT"
+export PORT="${PORT:-8080}"
 
 export REBECCA_GATEWAY_ADDR="0.0.0.0:${PORT}"
 
-# --------------------------------------------------
+# ============================================================
 # Database
-# --------------------------------------------------
+# ============================================================
 
 export DATABASE="sqlite:////var/lib/rebecca/rebecca.db"
-
-# مهم:
-# Runtime جدید Rebecca این متغیر را اجباری می‌خواهد.
 
 export SQLALCHEMY_DATABASE_URL="sqlite:////var/lib/rebecca/rebecca.db"
 
 export REBECCA_CONFIG_DIR="/var/lib/rebecca"
 export REBECCA_CERT_BASE="/var/lib/rebecca/certs"
 
-# Xray assets
+# ============================================================
+# Xray
+# ============================================================
+
 export XRAY_LOCATION_ASSET="/usr/local/share/xray"
+
+export XRAY_PATH="/usr/local/bin/xray"
+export XRAY_BINARY="/usr/local/bin/xray"
+export XRAY_EXECUTABLE="/usr/local/bin/xray"
+
+# ============================================================
+# Information
+# ============================================================
 
 echo "[INFO] HOST=$HOST"
 echo "[INFO] PORT=$PORT"
-echo "[INFO] GATEWAY=$REBECCA_GATEWAY_ADDR"
 echo "[INFO] DATABASE=$DATABASE"
 echo "[INFO] SQLALCHEMY_DATABASE_URL=$SQLALCHEMY_DATABASE_URL"
 
-# --------------------------------------------------
-# Check binaries
-# --------------------------------------------------
+# ============================================================
+# Check Xray
+# ============================================================
+
+echo "[INFO] Checking Xray..."
+
+if [ ! -x /usr/local/bin/xray ]; then
+    echo "[ERROR] Xray Core was not installed."
+    exit 1
+fi
+
+echo "[INFO] Xray Core found:"
+/usr/local/bin/xray version
+
+# ============================================================
+# Check Rebecca
+# ============================================================
 
 if [ ! -x /opt/rebecca/rebecca-cli ]; then
-    echo "[ERROR] rebecca-cli not found"
+    echo "[ERROR] rebecca-cli not found."
     exit 1
 fi
 
 if [ ! -x /opt/rebecca/rebecca-server ]; then
-    echo "[ERROR] rebecca-server not found"
-    exit 1
-fi
-
-if [ ! -x /usr/local/bin/xray ]; then
-    echo "[ERROR] Xray not found"
+    echo "[ERROR] rebecca-server not found."
     exit 1
 fi
 
 echo "[INFO] rebecca-cli found"
 echo "[INFO] rebecca-server found"
-echo "[INFO] xray found"
 
-# --------------------------------------------------
-# Xray version
-# --------------------------------------------------
-
-echo "[INFO] Xray version:"
-/usr/local/bin/xray version || true
-
-# --------------------------------------------------
+# ============================================================
 # Database migration
-# --------------------------------------------------
+# ============================================================
 
 echo "[INFO] Running database migrations..."
 
@@ -94,19 +97,15 @@ cd /opt/rebecca
 
 echo "[INFO] Database migration completed."
 
-# --------------------------------------------------
-# Create default admin
-# --------------------------------------------------
+# ============================================================
+# Admin
+# ============================================================
 
 echo "[INFO] Checking admin account..."
 
-ADMIN_EXISTS=$(
-    /opt/rebecca/rebecca-cli admin list 2>/dev/null \
-    | awk '$2 == "admin" {print $2}' \
-    | head -n 1
-)
-
-if [ "$ADMIN_EXISTS" = "admin" ]; then
+if /opt/rebecca/rebecca-cli admin list 2>/dev/null \
+    | awk '$2 == "admin" {found=1} END {exit !found}'
+then
 
     echo "[INFO] Admin 'admin' already exists."
 
@@ -122,15 +121,21 @@ else
 
 fi
 
-# --------------------------------------------------
-# Start Rebecca
-# --------------------------------------------------
+# ============================================================
+# Final information
+# ============================================================
 
 echo "======================================"
 echo "        Starting Rebecca"
 echo "======================================"
 
+echo "[INFO] Rebecca: /opt/rebecca/rebecca-server"
+echo "[INFO] Xray:    /usr/local/bin/xray"
+echo "[INFO] PORT:     ${PORT}"
 echo "[INFO] Listening on 0.0.0.0:${PORT}"
-echo "[INFO] Railway PORT=${PORT}"
+
+# ============================================================
+# Start Rebecca
+# ============================================================
 
 exec /opt/rebecca/rebecca-server
