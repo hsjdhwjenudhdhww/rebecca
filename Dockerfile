@@ -1,52 +1,31 @@
-FROM golang:1.25-bookworm AS builder
-
-RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    ca-certificates \
-    nodejs \
-    npm \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /build
-
-RUN git clone --depth 1 https://github.com/rebeccapanel/Rebecca.git .
-
-# ==============================
-# Build Dashboard
-# ==============================
-
-WORKDIR /build/dashboard
-
-RUN npm ci
-RUN npm run build
-
-# ==============================
-# Build Backend
-# ==============================
-
-WORKDIR /build
-
-RUN go version
-
-RUN bash scripts/build_binary.sh
-
-# ==============================
-# Runtime
-# ==============================
-
+```dockerfile
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
     sqlite3 \
+    tar \
+    gzip \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/rebecca
 
-COPY --from=builder /build/dist ./dist
-COPY --from=builder /build/dashboard/build ./dashboard/build
+# ======================================
+# Download Rebecca v0.1.4
+# ======================================
+
+RUN curl -fL \
+    "https://github.com/rebeccapanel/Rebecca/releases/download/v0.1.4/rebecca-linux-amd64.tar.gz" \
+    -o /tmp/rebecca.tar.gz \
+    && tar -xzf /tmp/rebecca.tar.gz -C /opt/rebecca \
+    && rm /tmp/rebecca.tar.gz
+
+# ======================================
+# Find binaries
+# ======================================
+
+RUN find /opt/rebecca -maxdepth 3 -type f -print
 
 RUN mkdir -p /var/lib/rebecca
 
@@ -54,7 +33,6 @@ COPY start.sh /start.sh
 
 RUN chmod +x /start.sh
 
-ENV PORT=8080
 ENV UVICORN_HOST=0.0.0.0
 ENV UVICORN_PORT=8080
 ENV SQLALCHEMY_DATABASE_URL=sqlite:////var/lib/rebecca/rebecca.db
@@ -62,3 +40,4 @@ ENV SQLALCHEMY_DATABASE_URL=sqlite:////var/lib/rebecca/rebecca.db
 EXPOSE 8080
 
 CMD ["/start.sh"]
+```
