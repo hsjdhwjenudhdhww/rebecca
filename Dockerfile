@@ -31,7 +31,7 @@ RUN mkdir -p \
 WORKDIR /opt/rebecca
 
 # ==========================================
-# Clone Rebecca
+# Rebecca source
 # ==========================================
 
 RUN git clone --depth 1 \
@@ -39,7 +39,7 @@ RUN git clone --depth 1 \
     source
 
 # ==========================================
-# Install Xray Core
+# Xray Core 26.3.27
 # ==========================================
 
 RUN set -eux; \
@@ -66,7 +66,7 @@ RUN set -eux; \
     rm -rf /tmp/xray-install
 
 # ==========================================
-# Build Rebecca Dashboard
+# Build dashboard
 # ==========================================
 
 WORKDIR /opt/rebecca/source/dashboard
@@ -81,7 +81,7 @@ RUN VITE_BASE_API=/api/ \
 RUN cp ./build/index.html ./build/404.html
 
 # ==========================================
-# Build Rebecca CLI + Server
+# Build Rebecca binaries
 # ==========================================
 
 WORKDIR /opt/rebecca/source
@@ -91,17 +91,17 @@ RUN chmod +x scripts/build_binary.sh
 RUN ./scripts/build_binary.sh
 
 # ==========================================
-# Install generated binaries
+# Install binaries
 # ==========================================
 
 RUN set -eux; \
-    test -f /opt/rebecca/source/dist/rebecca-cli; \
-    test -f /opt/rebecca/source/dist/rebecca-server; \
+    test -f dist/rebecca-cli; \
+    test -f dist/rebecca-server; \
     install -m 0755 \
-        /opt/rebecca/source/dist/rebecca-cli \
+        dist/rebecca-cli \
         /opt/rebecca/rebecca-cli; \
     install -m 0755 \
-        /opt/rebecca/source/dist/rebecca-server \
+        dist/rebecca-server \
         /opt/rebecca/rebecca-server; \
     /opt/rebecca/rebecca-cli --help
 
@@ -109,12 +109,13 @@ RUN set -eux; \
 # Startup
 # ==========================================
 
+COPY start.sh /start.sh
 COPY start.sh /opt/rebecca/start.sh
 
-RUN chmod +x /opt/rebecca/start.sh
+RUN chmod +x /start.sh /opt/rebecca/start.sh
 
 WORKDIR /opt/rebecca
 
 EXPOSE 8080
 
-ENTRYPOINT ["/opt/rebecca/start.sh"]
+ENTRYPOINT ["/start.sh"]
