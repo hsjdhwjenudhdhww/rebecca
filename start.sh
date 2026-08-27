@@ -9,7 +9,7 @@ echo "======================================"
 PORT="${PORT:-8080}"
 
 export UVICORN_HOST="0.0.0.0"
-export UVICORN_PORT="8080"
+export UVICORN_PORT="$PORT"
 
 export SQLALCHEMY_DATABASE_URL="${SQLALCHEMY_DATABASE_URL:-sqlite:////var/lib/rebecca/rebecca.db}"
 
@@ -24,23 +24,37 @@ echo "[INFO] Database: ${SQLALCHEMY_DATABASE_URL}"
 
 echo "[INFO] Running database migrations..."
 
-/opt/rebecca/dist/rebecca-cli migrate up
-
-echo "[INFO] Database migration completed."
+if /opt/rebecca/dist/rebecca-cli migrate up; then
+    echo "[INFO] Database migration completed."
+else
+    echo "[WARN] Migration failed."
+fi
 
 # ======================================
-# Create admin
+# Create admin automatically
 # ======================================
 
-echo "[INFO] Checking admin account..."
+echo "[INFO] Creating admin account..."
 
-(
-    printf 'admin\n'
-    printf 'admin\n'
-    printf 'admin\n'
-) | /opt/rebecca/dist/rebecca-cli admin create --role full_access \
-    && echo "[INFO] Admin account created." \
-    || echo "[INFO] Admin already exists or creation failed."
+ADMIN_USER="admin"
+ADMIN_PASS="admin"
+
+if command -v script >/dev/null 2>&1; then
+
+    printf '%s\n%s\n%s\n' \
+        "$ADMIN_USER" \
+        "$ADMIN_PASS" \
+        "$ADMIN_PASS" \
+        | script -qec "/opt/rebecca/dist/rebecca-cli admin create --role full_access" /dev/null \
+        && echo "[INFO] Admin creation completed." \
+        || echo "[INFO] Admin may already exist."
+
+else
+
+    echo "[WARN] 'script' command is not available."
+    echo "[WARN] Admin creation skipped."
+
+fi
 
 # ======================================
 # Start Rebecca
@@ -49,3 +63,4 @@ echo "[INFO] Checking admin account..."
 echo "[INFO] Starting Rebecca server..."
 
 exec /opt/rebecca/dist/rebecca-server
+#amirspider
