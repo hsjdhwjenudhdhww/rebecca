@@ -1,48 +1,31 @@
 #!/bin/sh
-
 set -eu
 
-echo ""
 echo "======================================"
-echo "        Rebecca Panel                 "
-echo "             Railway                  "
+echo "        Rebecca Panel v0.1.4"
+echo "             Railway"
 echo "======================================"
-echo ""
 
-# ============================================================
-# Railway PORT
-# ============================================================
-
+HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8080}"
+GATEWAY="${GATEWAY:-${HOST}:${PORT}}"
 
-export PORT="$PORT"
+DATA_DIR="${DATA_DIR:-/var/lib/rebecca}"
+DATABASE="${DATABASE:-sqlite:///${DATA_DIR}/rebecca.db}"
 
-# Rebecca gateway MUST listen on all interfaces.
-export HOST="0.0.0.0"
-export UVICORN_HOST="0.0.0.0"
-export UVICORN_PORT="$PORT"
+export HOST
+export PORT
+export GATEWAY
+export DATABASE
 
-# This has priority over UVICORN_HOST/UVICORN_PORT
-export REBECCA_GATEWAY_ADDR="0.0.0.0:${PORT}"
+mkdir -p "$DATA_DIR"
 
-# ============================================================
-# Database
-# ============================================================
+echo "[INFO] PORT=$PORT"
+echo "[INFO] HOST=$HOST"
+echo "[INFO] GATEWAY=$GATEWAY"
+echo "[INFO] DATABASE=$DATABASE"
 
-export SQLALCHEMY_DATABASE_URL="${SQLALCHEMY_DATABASE_URL:-sqlite:////var/lib/rebecca/rebecca.db}"
-
-mkdir -p /var/lib/rebecca
-
-echo "[INFO] PORT=${PORT}"
-echo "[INFO] HOST=0.0.0.0"
-echo "[INFO] GATEWAY=${REBECCA_GATEWAY_ADDR}"
-echo "[INFO] DATABASE=${SQLALCHEMY_DATABASE_URL}"
-
-echo ""
-
-# ============================================================
-# Check binaries
-# ============================================================
+cd /opt/rebecca
 
 if [ ! -x /opt/rebecca/rebecca-cli ]; then
     echo "[ERROR] rebecca-cli not found"
@@ -57,65 +40,55 @@ fi
 echo "[INFO] rebecca-cli found"
 echo "[INFO] rebecca-server found"
 
-# ============================================================
+# --------------------------------------
 # Database migration
-# ============================================================
+# --------------------------------------
 
-echo ""
 echo "[INFO] Running Rebecca database migrations..."
-echo ""
 
-cd /opt/rebecca
+/opt/rebecca/rebecca-cli migrate
 
-/opt/rebecca/rebecca-cli migrate up
-
-echo ""
 echo "[INFO] Database migration completed."
 
-# ============================================================
-# Create admin
-# ============================================================
+# --------------------------------------
+# Admin creation
+# --------------------------------------
 
-echo ""
-echo "[INFO] Creating admin account..."
-echo ""
+ADMIN_USERNAME="${ADMIN_USERNAME:-}"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
+ADMIN_ROLE="${ADMIN_ROLE:-full_access}"
 
-# IMPORTANT:
-# Rebecca's official CLI syntax supports:
-# rebecca cli admin create --role full_access
-#
-# The CLI may prompt for username/password.
-#
-# We try the non-interactive environment-supported route first.
+if [ -n "$ADMIN_USERNAME" ] && [ -n "$ADMIN_PASSWORD" ]; then
 
-if [ -n "${REBECCA_ADMIN_USERNAME:-}" ] && [ -n "${REBECCA_ADMIN_PASSWORD:-}" ]; then
+    echo "[INFO] Checking admin account..."
 
-    echo "[INFO] Admin credentials supplied through environment."
+    if /opt/rebecca/rebecca-cli admin show "$ADMIN_USERNAME" >/dev/null 2>&1; then
+        echo "[INFO] Admin '$ADMIN_USERNAME' already exists."
+    else
+        echo "[INFO] Creating admin '$ADMIN_USERNAME'..."
 
-    printf '%s\n%s\n' \
-        "$REBECCA_ADMIN_USERNAME" \
-        "$REBECCA_ADMIN_PASSWORD" \
-        | /opt/rebecca/rebecca-cli cli admin create --role full_access \
-        || echo "[WARN] Admin creation returned non-zero."
+        /opt/rebecca/rebecca-cli admin create \
+            "$ADMIN_USERNAME" \
+            --password "$ADMIN_PASSWORD" \
+            --role "$ADMIN_ROLE"
+
+        echo "[INFO] Admin '$ADMIN_USERNAME' created."
+    fi
 
 else
-
     echo "[INFO] No admin environment variables supplied."
     echo "[INFO] Skipping automatic admin creation."
-
 fi
 
-# ============================================================
+# --------------------------------------
 # Start Rebecca
-# ============================================================
+# --------------------------------------
 
-echo ""
 echo "======================================"
-echo "        Starting Rebecca             "
+echo "        Starting Rebecca"
 echo "======================================"
-echo ""
-echo "[INFO] Listening on ${REBECCA_GATEWAY_ADDR}"
+
+echo "[INFO] Listening on ${HOST}:${PORT}"
 echo "[INFO] Railway PORT=${PORT}"
-echo ""
 
 exec /opt/rebecca/rebecca-server
