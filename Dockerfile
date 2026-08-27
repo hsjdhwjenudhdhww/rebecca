@@ -6,6 +6,8 @@ RUN apt-get update && apt-get install -y \
     sqlite3 \
     tar \
     gzip \
+    util-linux \
+    dos2unix \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/rebecca
@@ -22,7 +24,10 @@ RUN chmod +x /opt/rebecca/rebecca-cli \
 RUN mkdir -p /var/lib/rebecca
 
 COPY start.sh /start.sh
-RUN chmod +x /start.sh
+
+RUN dos2unix /start.sh \
+    && chmod +x /start.sh \
+    && head -n 1 /start.sh
 
 ENV UVICORN_HOST=0.0.0.0
 ENV UVICORN_PORT=8080
@@ -30,4 +35,4 @@ ENV SQLALCHEMY_DATABASE_URL=sqlite:////var/lib/rebecca/rebecca.db
 
 EXPOSE 8080
 
-CMD ["/start.sh"]
+CMD ["/bin/sh", "/start.sh"]
