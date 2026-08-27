@@ -25,10 +25,18 @@ ldd --version | head -n 1
 echo "[INFO] PORT=${PORT}"
 echo "[INFO] DATABASE=${SQLALCHEMY_DATABASE_URL}"
 
+# ======================================
+# Start Rebecca
+# ======================================
+
 echo "[INFO] Starting Rebecca..."
 
 "$SERVER" &
 SERVER_PID=$!
+
+# ======================================
+# Wait for Rebecca
+# ======================================
 
 echo "[INFO] Waiting for Rebecca..."
 
@@ -43,7 +51,7 @@ while ! curl -fsS "http://127.0.0.1:${PORT}/" >/dev/null 2>&1; do
         exit 1
     fi
 
-    if [ "$i" -ge 60 ]; then
+    if [ "$i" -ge 120 ]; then
         echo "[ERROR] Rebecca did not become ready."
         exit 1
     fi
@@ -52,6 +60,10 @@ while ! curl -fsS "http://127.0.0.1:${PORT}/" >/dev/null 2>&1; do
 done
 
 echo "[INFO] Rebecca is ready."
+
+# ======================================
+# SQLite
+# ======================================
 
 if [ -f "$DB_PATH" ]; then
     echo "[INFO] Configuring SQLite..."
@@ -66,17 +78,24 @@ SQL
     echo "[INFO] SQLite configured."
 fi
 
+# ======================================
+# Create admin
+# Username: admin
+# Password: admin1
+# Telegram ID: empty
+# Role: full_access
+# ======================================
+
 echo "[INFO] Creating admin account..."
 
-if command -v script >/dev/null 2>&1; then
-    (
-        sleep 1
-        printf '\n'
-    ) | script -qec \
-        "$CLI admin create --username admin --password admin --role full_access" \
-        /dev/null || true
+if "$CLI" admin create \
+    --username admin \
+    --password admin1 \
+    --role full_access
+then
+    echo "[INFO] Admin account created successfully."
 else
-    echo "[WARN] script command not found."
+    echo "[INFO] Admin already exists or creation was rejected."
 fi
 
 echo "[INFO] Rebecca is running."
