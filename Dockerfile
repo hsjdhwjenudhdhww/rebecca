@@ -4,7 +4,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
 # ==========================================================
-# Packages
+# System packages
 # ==========================================================
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -12,63 +12,98 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     wget \
+    git \
     unzip \
+    zip \
     openssl \
     jq \
     procps \
     iproute2 \
     net-tools \
     lsb-release \
-    sudo \
-    gnupg \
-    git \
+    build-essential \
+    pkg-config \
     nginx \
-    tar \
-    gzip \
+    golang \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /opt
-
 # ==========================================================
-# Rebecca installer
-#
-# IMPORTANT:
-# Do NOT create /opt/rebecca before this command.
-# Rebecca installer uses that directory to detect installation.
+# Clone Rebecca
 # ==========================================================
 
-RUN rm -rf /opt/rebecca \
-    && curl -fsSL \
-        https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca-binary.sh \
-        -o /tmp/rebecca-install.sh \
-    && chmod +x /tmp/rebecca-install.sh \
-    && /tmp/rebecca-install.sh install --database sqlite \
-    && rm -f /tmp/rebecca-install.sh
+WORKDIR /build
+
+RUN git clone \
+    --depth 1 \
+    https://github.com/rebeccapanel/Rebecca.git \
+    /build/Rebecca
+
+WORKDIR /build/Rebecca
 
 # ==========================================================
-# Verify Rebecca
+# Build dashboard
 # ==========================================================
 
-RUN test -x /opt/rebecca/bin/rebecca-server \
+RUN cd dashboard \
+    && npm ci \
+    && VITE_BASE_API=/api/ npm run build \
+        -- \
+        --outDir=build \
+        --assetsDir=statics \
+    && cp build/index.html build/404.html
+
+# ==========================================================
+# Build Rebecca binaries
+# ==========================================================
+
+RUN bash scripts/build_binary.sh
+
+# ==========================================================
+# Verify build
+# ==========================================================
+
+RUN test -x /build/Rebecca/dist/rebecca-server \
     || ( \
         echo "==========================================" && \
-        echo "ERROR: Rebecca installation failed" && \
+        echo "ERROR: rebecca-server build failed" && \
         echo "==========================================" && \
-        find /opt/rebecca -maxdepth 5 -type f -print 2>/dev/null || true; \
+        find /build/Rebecca \
+            -maxdepth 5 \
+            -type f \
+            -name 'rebecca-*' \
+            -print; \
         exit 1 \
     )
 
+RUN test -x /build/Rebecca/dist/rebecca-cli \
+    || ( \
+        echo "ERROR: rebecca-cli build failed"; \
+        exit 1; \
+    )
+
 # ==========================================================
-# Data directories
+# Runtime directory
 # ==========================================================
 
 RUN mkdir -p \
+    /opt/rebecca \
     /var/lib/rebecca \
     /var/lib/rebecca/certs
 
 # ==========================================================
+# Copy Rebecca runtime
+# ==========================================================
+
+RUN cp -a /build/Rebecca/. /opt/rebecca/
+
+RUN chmod +x \
+    /opt/rebecca/dist/rebecca-server \
+    /opt/rebecca/dist/rebecca-cli
+
+# ==========================================================
 # Xray standalone
-# NO systemd installer
 # ==========================================================
 
 ARG TARGETARCH
@@ -89,22 +124,21 @@ RUN set -eux; \
             exit 1 \
             ;; \
     esac; \
-    TMP_DIR="$(mktemp -d)"; \
-    echo "Downloading ${XRAY_ASSET}"; \
+    TMP="$(mktemp -d)"; \
     curl -fL \
         --retry 5 \
         --retry-delay 2 \
         --connect-timeout 20 \
         "https://github.com/XTLS/Xray-core/releases/latest/download/${XRAY_ASSET}" \
-        -o "${TMP_DIR}/xray.zip"; \
+        -o "${TMP}/xray.zip"; \
     unzip -oq \
-        "${TMP_DIR}/xray.zip" \
-        -d "${TMP_DIR}/xray"; \
-    test -f "${TMP_DIR}/xray/xray"; \
+        "${TMP}/xray.zip" \
+        -d "${TMP}/xray"; \
+    test -f "${TMP}/xray/xray"; \
     install -m 0755 \
-        "${TMP_DIR}/xray/xray" \
+        "${TMP}/xray/xray" \
         /usr/local/bin/xray; \
-    rm -rf "${TMP_DIR}"
+    rm -rf "${TMP}"
 
 # ==========================================================
 # Verify Xray
