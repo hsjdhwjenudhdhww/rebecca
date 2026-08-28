@@ -1,152 +1,104 @@
 #!/usr/bin/env bash
-
 set -Eeuo pipefail
 
-PANEL_PORT="8080"
-NODE_PORT="5000"
+PANEL_PORT=8080
+NODE_PORT=5000
 
-export UVICORN_HOST="0.0.0.0"
-export UVICORN_PORT="${PANEL_PORT}"
+export DEBIAN_FRONTEND=noninteractive
 
-# مهم:
-# Railway باید health-check را روی همین پورت انجام دهد.
-export PORT="${PANEL_PORT}"
+echo "=========================================="
+echo " Rebecca Railway"
+echo "=========================================="
+echo "Panel : ${PANEL_PORT}"
+echo "Node  : ${NODE_PORT}"
+echo "=========================================="
 
-export REBECCA_GATEWAY_ADDR="0.0.0.0:${PANEL_PORT}"
+# ------------------------------------------------
+# Install Rebecca
+# ------------------------------------------------
 
-mkdir -p /opt/rebecca
-mkdir -p /var/lib/rebecca
-mkdir -p /var/lib/rebecca/certs
+if [ ! -x /opt/rebecca/bin/rebecca-server ]; then
 
-log() {
-    echo "[Rebecca] $*"
-}
+    echo "[+] Installing Rebecca..."
 
-log "=============================================="
-log " Rebecca Railway container"
-log "=============================================="
-log "Panel bind : 0.0.0.0:${PANEL_PORT}"
-log "Node port  : ${NODE_PORT}"
-log "PORT       : ${PORT}"
-log "=============================================="
+    curl -fsSL \
+      https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca-binary.sh \
+      | bash -s -- install --database sqlite
 
-# --------------------------------------------------
-# Rebecca environment
-# --------------------------------------------------
-
-if [ -f /opt/rebecca/.env ]; then
-    log "Loading /opt/rebecca/.env"
-    set -a
-    . /opt/rebecca/.env
-    set +a
 fi
 
-# Railway / container configuration must win.
-export UVICORN_HOST="0.0.0.0"
-export UVICORN_PORT="${PANEL_PORT}"
-export REBECCA_GATEWAY_ADDR="0.0.0.0:${PANEL_PORT}"
-export PORT="${PANEL_PORT}"
+# ------------------------------------------------
+# Verify installation
+# ------------------------------------------------
 
-# --------------------------------------------------
-# Database migrations
-# --------------------------------------------------
+if [ ! -x /opt/rebecca/bin/rebecca-server ]; then
+    echo "[ERROR] Rebecca installation failed."
+    exit 1
+fi
 
-log "Running Rebecca migrations..."
+echo "[+] Rebecca installed."
+
+# ------------------------------------------------
+# Install Xray
+# ------------------------------------------------
+
+if ! command -v xray >/dev/null 2>&1; then
+
+    echo "[+] Installing Xray-core..."
+
+    curl -fsSL \
+      https://github.com/XTLS/Xray-install/raw/main/install-release.sh \
+      | bash -s -- install
+
+fi
+
+echo
+echo "[+] Xray version:"
+xray version || true
+
+# ------------------------------------------------
+# Environment
+# ------------------------------------------------
+
+export HOST=0.0.0.0
+export PORT=${PANEL_PORT}
+
+export UVICORN_HOST=0.0.0.0
+export UVICORN_PORT=${PANEL_PORT}
+
+# ------------------------------------------------
+# Migration
+# ------------------------------------------------
+
+echo "[+] Running migrations..."
 
 if command -v rebecca >/dev/null 2>&1; then
-    rebecca migrate || {
-        log "WARNING: migration command returned non-zero"
-    }
+    rebecca migrate || true
 fi
 
-# --------------------------------------------------
-# Admin
-# --------------------------------------------------
+# ------------------------------------------------
+# Admin credentials
+# ------------------------------------------------
 
 ADMIN_USERNAME="${REBECCA_ADMIN_USERNAME:-admin1}"
-ADMIN_PASSWORD="${REBECCA_ADMIN_PASSWORD:-}"
-
-if [ -z "${ADMIN_PASSWORD}" ]; then
-    ADMIN_PASSWORD="$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | head -c 20)"
-fi
-
-export REBECCA_ADMIN_USERNAME="${ADMIN_USERNAME}"
-export REBECCA_ADMIN_PASSWORD="${ADMIN_PASSWORD}"
-
-# --------------------------------------------------
-# Domain information
-# --------------------------------------------------
-
-DOMAIN="${RAILWAY_PUBLIC_DOMAIN:-}"
-
-if [ -z "${DOMAIN}" ]; then
-    DOMAIN="${RAILWAY_STATIC_URL:-}"
-fi
-
-if [ -z "${DOMAIN}" ]; then
-    DOMAIN="YOUR_RAILWAY_DOMAIN"
-fi
-
-if [[ "${DOMAIN}" != http://* && "${DOMAIN}" != https://* ]]; then
-    DOMAIN="https://${DOMAIN}"
-fi
-
-PANEL_URL="${DOMAIN}/dashboard/"
-
-# --------------------------------------------------
-# Information
-# --------------------------------------------------
+ADMIN_PASSWORD="${REBECCA_ADMIN_PASSWORD:-admin123}"
 
 echo
-echo "======================================================"
-echo "              REBECCA DEPLOYMENT INFO"
-echo "======================================================"
-echo
-echo "Panel:"
-echo "  ${PANEL_URL}"
-echo
-echo "Panel bind:"
-echo "  0.0.0.0:${PANEL_PORT}"
-echo
-echo "Node:"
-echo "  0.0.0.0:${NODE_PORT}"
-echo
-echo "Admin username:"
-echo "  ${ADMIN_USERNAME}"
-echo
-echo "Admin password:"
-echo "  ${ADMIN_PASSWORD}"
-echo
-echo "Telegram ID:"
-echo "  <empty>"
-echo
-echo "Railway domain:"
-echo "  ${DOMAIN}"
-echo
-echo "======================================================"
+echo "=========================================="
+echo " Rebecca credentials"
+echo "=========================================="
+echo "Username : ${ADMIN_USERNAME}"
+echo "Password : ${ADMIN_PASSWORD}"
+echo "Telegram : <empty>"
+echo "=========================================="
 echo
 
-# --------------------------------------------------
-# IMPORTANT:
-# Rebecca node enrollment requires a certificate/token
-# generated by the Master/panel flow.
-#
-# We deliberately DO NOT fabricate a node token here.
-# --------------------------------------------------
+# ------------------------------------------------
+# Start
+# ------------------------------------------------
 
-log "Rebecca Node runtime is installed."
+echo "[+] Starting Rebecca..."
 
-if command -v xray >/dev/null 2>&1; then
-    log "Xray:"
-    xray version || true
-else
-    log "WARNING: Xray binary was not found."
-fi
-
-# --------------------------------------------------
-# Start Rebecca
-# --------------------------------------------------
-
-log "Starting Rebecca master on ${PANEL_PORT}..."
+cd /opt/rebecca
 
 exec /opt/rebecca/bin/rebecca-server
