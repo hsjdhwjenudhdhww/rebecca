@@ -2,10 +2,6 @@
 
 set -Eeuo pipefail
 
-# ==========================================================
-# Configuration
-# ==========================================================
-
 PANEL_PORT="8080"
 NODE_PORT="5000"
 
@@ -14,13 +10,10 @@ DATA_DIR="/var/lib/rebecca"
 
 REBECCA_SERVER="${APP_DIR}/bin/rebecca-server"
 REBECCA_CLI="${APP_DIR}/bin/rebecca-cli"
+
 XRAY_BIN="/usr/local/bin/xray"
 
 export DEBIAN_FRONTEND=noninteractive
-
-# ==========================================================
-# Banner
-# ==========================================================
 
 echo
 echo "=========================================="
@@ -32,7 +25,7 @@ echo "=========================================="
 echo
 
 # ==========================================================
-# Directories
+# Data
 # ==========================================================
 
 mkdir -p \
@@ -40,45 +33,34 @@ mkdir -p \
     "${DATA_DIR}/certs"
 
 # ==========================================================
-# Verify Rebecca
+# Rebecca check
 # ==========================================================
 
-if [ ! -f "${REBECCA_SERVER}" ]; then
+echo "[+] Checking Rebecca..."
 
-    echo "[ERROR] Rebecca server binary does not exist:"
+if [ ! -x "${REBECCA_SERVER}" ]; then
+    echo "[ERROR] Rebecca server not found:"
     echo "${REBECCA_SERVER}"
-
-    echo
-    echo "Rebecca files:"
-    find "${APP_DIR}" \
-        -maxdepth 5 \
-        -type f \
-        -print 2>/dev/null || true
-
     exit 1
-
 fi
 
-chmod +x "${REBECCA_SERVER}"
-
-echo "[OK] Rebecca binary found:"
+echo "[OK] Rebecca:"
 echo "     ${REBECCA_SERVER}"
 
 # ==========================================================
-# Verify Xray
+# Xray check
 # ==========================================================
 
+echo
+echo "[+] Checking Xray..."
+
 if [ ! -x "${XRAY_BIN}" ]; then
-
-    echo "[ERROR] Xray binary not found:"
+    echo "[ERROR] Xray not found:"
     echo "${XRAY_BIN}"
-
     exit 1
-
 fi
 
-echo
-echo "[OK] Xray found:"
+echo "[OK] Xray:"
 echo "     ${XRAY_BIN}"
 
 echo
@@ -86,7 +68,7 @@ echo "[+] Xray version:"
 "${XRAY_BIN}" version || true
 
 # ==========================================================
-# Rebecca environment
+# Environment
 # ==========================================================
 
 export HOST="0.0.0.0"
@@ -104,7 +86,7 @@ export REBECCA_CERT_BASE="${REBECCA_CERT_BASE:-/var/lib/rebecca/certs}"
 export REBECCA_CONFIG_DIR="${REBECCA_CONFIG_DIR:-/var/lib/rebecca}"
 
 # ==========================================================
-# Create Rebecca .env
+# Environment file
 # ==========================================================
 
 cat > "${APP_DIR}/.env" <<EOF
@@ -124,31 +106,30 @@ REBECCA_CONFIG_DIR=${REBECCA_CONFIG_DIR}
 EOF
 
 echo
-echo "[OK] Rebecca environment configured."
+echo "[OK] Environment configured."
 
 # ==========================================================
-# Database migration
+# Migration
 # ==========================================================
 
 echo
-echo "[+] Running database migrations..."
+echo "[+] Running migrations..."
 
 if [ -x "${REBECCA_CLI}" ]; then
 
     "${REBECCA_CLI}" migrate up || {
         echo "[WARN] Migration returned non-zero."
-        echo "[WARN] Continuing anyway."
+        echo "[WARN] Continuing..."
     }
 
 else
 
-    echo "[WARN] Rebecca CLI not found:"
-    echo "       ${REBECCA_CLI}"
+    echo "[WARN] Rebecca CLI not found."
 
 fi
 
 # ==========================================================
-# Admin information
+# Admin
 # ==========================================================
 
 ADMIN_USERNAME="${REBECCA_ADMIN_USERNAME:-admin1}"
@@ -197,7 +178,7 @@ if [ -n "${DOMAIN}" ]; then
     echo "Dashboard:"
     echo "${PUBLIC_URL}/dashboard/"
     echo
-    echo "Node Master URL:"
+    echo "Master URL:"
     echo "${PUBLIC_URL}"
     echo
     echo "=========================================="
@@ -206,7 +187,7 @@ else
 
     echo
     echo "[WARN] Railway public domain not available."
-    echo "[WARN] Generate a public domain for this service."
+    echo "[WARN] Generate a public domain in Railway."
 
 fi
 
@@ -219,13 +200,13 @@ echo "=========================================="
 echo "              Runtime"
 echo "=========================================="
 echo
-echo "Rebecca:"
+echo "Panel:"
 echo "  0.0.0.0:${PANEL_PORT}"
 echo
 echo "Xray:"
 echo "  ${XRAY_BIN}"
 echo
-echo "Reserved Node port:"
+echo "Node port:"
 echo "  ${NODE_PORT}"
 echo
 echo "=========================================="
