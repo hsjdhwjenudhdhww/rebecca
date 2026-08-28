@@ -8,12 +8,11 @@ NODE_PORT="5000"
 APP_DIR="/opt/rebecca"
 DATA_DIR="/var/lib/rebecca"
 
-REBECCA_SERVER="${APP_DIR}/bin/rebecca-server"
-REBECCA_CLI="${APP_DIR}/bin/rebecca-cli"
+SERVER="${APP_DIR}/dist/rebecca-server"
+CLI="${APP_DIR}/dist/rebecca-cli"
+XRAY="/usr/local/bin/xray"
 
-XRAY_BIN="/usr/local/bin/xray"
-
-export DEBIAN_FRONTEND=noninteractive
+export HOME="${HOME:-/root}"
 
 echo
 echo "=========================================="
@@ -25,7 +24,7 @@ echo "=========================================="
 echo
 
 # ==========================================================
-# Data
+# Directories
 # ==========================================================
 
 mkdir -p \
@@ -33,39 +32,44 @@ mkdir -p \
     "${DATA_DIR}/certs"
 
 # ==========================================================
-# Rebecca check
+# Verify Rebecca
 # ==========================================================
 
 echo "[+] Checking Rebecca..."
 
-if [ ! -x "${REBECCA_SERVER}" ]; then
+if [ ! -x "${SERVER}" ]; then
     echo "[ERROR] Rebecca server not found:"
-    echo "${REBECCA_SERVER}"
+    echo "${SERVER}"
     exit 1
 fi
 
-echo "[OK] Rebecca:"
-echo "     ${REBECCA_SERVER}"
+if [ ! -x "${CLI}" ]; then
+    echo "[ERROR] Rebecca CLI not found:"
+    echo "${CLI}"
+    exit 1
+fi
+
+echo "[OK] Rebecca server:"
+echo "     ${SERVER}"
 
 # ==========================================================
-# Xray check
+# Verify Xray
 # ==========================================================
 
 echo
 echo "[+] Checking Xray..."
 
-if [ ! -x "${XRAY_BIN}" ]; then
+if [ ! -x "${XRAY}" ]; then
     echo "[ERROR] Xray not found:"
-    echo "${XRAY_BIN}"
+    echo "${XRAY}"
     exit 1
 fi
 
 echo "[OK] Xray:"
-echo "     ${XRAY_BIN}"
+echo "     ${XRAY}"
 
 echo
-echo "[+] Xray version:"
-"${XRAY_BIN}" version || true
+"${XRAY}" version || true
 
 # ==========================================================
 # Environment
@@ -86,7 +90,7 @@ export REBECCA_CERT_BASE="${REBECCA_CERT_BASE:-/var/lib/rebecca/certs}"
 export REBECCA_CONFIG_DIR="${REBECCA_CONFIG_DIR:-/var/lib/rebecca}"
 
 # ==========================================================
-# Environment file
+# Rebecca .env
 # ==========================================================
 
 cat > "${APP_DIR}/.env" <<EOF
@@ -115,21 +119,13 @@ echo "[OK] Environment configured."
 echo
 echo "[+] Running migrations..."
 
-if [ -x "${REBECCA_CLI}" ]; then
-
-    "${REBECCA_CLI}" migrate up || {
-        echo "[WARN] Migration returned non-zero."
-        echo "[WARN] Continuing..."
-    }
-
-else
-
-    echo "[WARN] Rebecca CLI not found."
-
-fi
+"${CLI}" migrate up || {
+    echo "[WARN] Migration returned non-zero."
+    echo "[WARN] Continuing..."
+}
 
 # ==========================================================
-# Admin
+# Credentials information
 # ==========================================================
 
 ADMIN_USERNAME="${REBECCA_ADMIN_USERNAME:-admin1}"
@@ -178,17 +174,17 @@ if [ -n "${DOMAIN}" ]; then
     echo "Dashboard:"
     echo "${PUBLIC_URL}/dashboard/"
     echo
-    echo "Master URL:"
+    echo "Master:"
+    echo "${PUBLIC_URL}"
+    echo
+    echo "Node enrollment:"
     echo "${PUBLIC_URL}"
     echo
     echo "=========================================="
 
 else
-
     echo
-    echo "[WARN] Railway public domain not available."
-    echo "[WARN] Generate a public domain in Railway."
-
+    echo "[WARN] Railway public domain unavailable."
 fi
 
 # ==========================================================
@@ -200,14 +196,9 @@ echo "=========================================="
 echo "              Runtime"
 echo "=========================================="
 echo
-echo "Panel:"
-echo "  0.0.0.0:${PANEL_PORT}"
-echo
-echo "Xray:"
-echo "  ${XRAY_BIN}"
-echo
-echo "Node port:"
-echo "  ${NODE_PORT}"
+echo "Rebecca : 0.0.0.0:${PANEL_PORT}"
+echo "Xray    : ${XRAY}"
+echo "Node    : ${NODE_PORT}"
 echo
 echo "=========================================="
 
@@ -222,4 +213,4 @@ echo
 
 cd "${APP_DIR}"
 
-exec "${REBECCA_SERVER}"
+exec "${SERVER}"
